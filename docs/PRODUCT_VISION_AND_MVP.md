@@ -298,7 +298,7 @@ Solana product
 | USDC | Ethereum | Solana USDC | Circle CCTP V2 | Implemented, gated | Quote, prepare, and status are implemented and tested against recorded fixtures. No mainnet transfer has been completed, so the route must stay disabled in production. |
 | USDC | Base | Solana USDC | Circle CCTP V2 | Implemented, gated | Same code path and TokenMessenger address as Ethereum; only the domain, chain ID, and USDC address differ. Carries the same mainnet-proof gate. |
 | USDC | HyperEVM | Solana USDC | Circle CCTP | Planned | HyperCore funding is a separate user step before HyperEVM CCTP when needed. |
-| Binance-Peg USDC | BNB Chain | Solana USDC | Mayan | Integration scaffold | This is not native Circle CCTP and must be labeled as an adapter route. |
+| Binance-Peg USDC | BNB Chain | Solana USDC | Mayan | Implemented, gated | Quote, prepare, and status implemented and tested against a fake SDK and recorded fixtures. Not native Circle CCTP: the token is Binance-issued and Mayan swaps it, so every quote carries an explicit disclosure. No mainnet transfer completed. |
 | USDT | TRON | Solana USDT | USDT0 / LayerZero | Implemented, gated | Quote and status adapter is tested; signing awaits official target allowlist, API credentials, and mainnet proof. |
 | USDT | Ethereum | Solana USDT | Verified intent or USDT0 route | Planned | Must settle canonical USDT without a stablecoin swap. |
 | USDT | BNB Chain | Solana USDT | Verified intent or USDT0 route | Planned | Enable only after exact source token and canonical output are verified. |
@@ -336,6 +336,7 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - Settlement verification in the core, rejecting a delivery below the guaranteed minimum.
 - `@hedgents/stablecoin-rail-solana`: base58, associated-token-account derivation with on-curve rejection, and a balance-delta settlement verifier.
 - `@hedgents/stablecoin-rail-cctp`: source-configurable Circle CCTP V2 provider for Ethereum, Base, and Arbitrum.
+- `@hedgents/stablecoin-rail-mayan`: disclosed Binance-Peg USDC adapter route from BNB Chain, with the Mayan SDK injected rather than bundled.
 - An executable plugin conformance suite; the USDT0 adapter passes it unmodified.
 
 ### Not completed
@@ -348,6 +349,7 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - No TRON → Solana small-value mainnet transfer has been completed by Hedgents.
 - Settlement verification has never run against a real delivery transaction; it is tested only against recorded RPC fixtures.
 - No CCTP route has completed a small-value mainnet transfer.
+- The Mayan BNB route has not completed a small-value mainnet transfer.
 - Circle exposes no destination-transaction identifier for a forwarded transfer, so the CCTP route proves delivery by destination balance and cannot yet report an exact received amount.
 - The Allbridge fallback is not implemented.
 - Production CCTP and Mayan server adapters remain incomplete.
