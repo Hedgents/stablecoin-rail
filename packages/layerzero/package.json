@@ -36,7 +36,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@hedgents/stablecoin-rail": "0.1.0"
+    "@hedgents/stablecoin-rail": "0.2.0"
   },
   "engines": {
     "node": ">=20"
