@@ -24,3 +24,30 @@ export const SOLANA_USDT: AssetDescriptor = Object.freeze({
   symbol: "USDT",
   decimals: 6,
 });
+
+/* ---------------------------------------------------- USDG, Robinhood chain */
+
+export const ROBINHOOD_MAINNET_CHAIN_ID = "eip155:4663";
+export const ROBINHOOD_NUMERIC_CHAIN_ID = 4663;
+
+/**
+ * Confirmed against LayerZero's live /v1/chains and /v1/tokens on 2026-08-03
+ * and against Paxos' published USDG deployments. Both ends report isSupported,
+ * and Robinhood Chain is an Arbitrum Orbit L2 using LayerZero's OFT model.
+ */
+export const ROBINHOOD_USDG_ADDRESS = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
+export const SOLANA_USDG_MINT = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH";
+
+export const ROBINHOOD_USDG: AssetDescriptor = Object.freeze({
+  chainId: ROBINHOOD_MAINNET_CHAIN_ID,
+  assetId: `${ROBINHOOD_MAINNET_CHAIN_ID}/erc20:${ROBINHOOD_USDG_ADDRESS.toLowerCase()}`,
+  symbol: "USDG",
+  decimals: 6,
+});
+
+export const SOLANA_USDG: AssetDescriptor = Object.freeze({
+  chainId: SOLANA_MAINNET_CHAIN_ID,
+  assetId: `${SOLANA_MAINNET_CHAIN_ID}/spl:${SOLANA_USDG_MINT}`,
+  symbol: "USDG",
+  decimals: 6,
+});

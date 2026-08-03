@@ -8,7 +8,12 @@ import {
   createCctpToSolana,
 } from "@hedgents/stablecoin-rail-cctp";
 import { createMayanBnbToSolana } from "@hedgents/stablecoin-rail-mayan";
-import { createLayerZeroUsdt0TronToSolana } from "@hedgents/stablecoin-rail-layerzero";
+import {
+  ROBINHOOD_USDG_ADDRESS,
+  SOLANA_USDG_MINT,
+  createLayerZeroUsdgRobinhoodToSolana,
+  createLayerZeroUsdt0TronToSolana,
+} from "@hedgents/stablecoin-rail-layerzero";
 import { fetchQuote, getSwapFromEvmTxPayload } from "@mayanfinance/swap-sdk";
 
 /**
@@ -166,6 +171,50 @@ if (LAYERZERO_API_KEY && USDT0_ALLOWLIST.length > 0) {
   });
 }
 
+
+// -------------------------------------------------------- USDG (Robinhood)
+
+/*
+ * Unlike the TRON route this needs no contract allowlist: it is an OFT send on
+ * an ordinary EVM chain, and the adapter validates LayerZero's returned target,
+ * calldata, signer, and zero native value itself. So it opens as soon as an API
+ * key exists.
+ */
+if (LAYERZERO_API_KEY) {
+  const usdg = createLayerZeroUsdgRobinhoodToSolana({ apiKey: LAYERZERO_API_KEY });
+  fundingProviders.push(usdg);
+  routes.push({
+    id: "usdg-robinhood",
+    pluginId: usdg.manifest.id,
+    providerName: usdg.manifest.name,
+    namespace: "evm",
+    label: "Robinhood Chain",
+    chainId: "eip155:4663",
+    numericChainId: 4663,
+    token: { address: ROBINHOOD_USDG_ADDRESS, symbol: "USDG", decimals: 6 },
+    assetId: `eip155:4663/erc20:${ROBINHOOD_USDG_ADDRESS.toLowerCase()}`,
+    settlement: { symbol: "USDG", mint: SOLANA_USDG_MINT, decimals: 6 },
+    settlementAssetId: `solana:mainnet/spl:${SOLANA_USDG_MINT}`,
+    native: true,
+    status: "live",
+    note: "Canonical USDG via LayerZero OFT. Same issuer on both ends, no swap.",
+  });
+} else {
+  routes.push({
+    id: "usdg-robinhood",
+    namespace: "evm",
+    label: "Robinhood Chain",
+    chainId: "eip155:4663",
+    numericChainId: 4663,
+    token: { address: ROBINHOOD_USDG_ADDRESS, symbol: "USDG", decimals: 6 },
+    assetId: `eip155:4663/erc20:${ROBINHOOD_USDG_ADDRESS.toLowerCase()}`,
+    settlement: { symbol: "USDG", mint: SOLANA_USDG_MINT, decimals: 6 },
+    settlementAssetId: `solana:mainnet/spl:${SOLANA_USDG_MINT}`,
+    native: true,
+    status: "gated",
+    note: "Needs LAYERZERO_API_KEY. No contract allowlist required, unlike the TRON route.",
+  });
+}
 
 // Signing is opt-in per deployment. No route has completed a mainnet transfer,
 // so a public instance defaults to quote-only until an operator turns it on.

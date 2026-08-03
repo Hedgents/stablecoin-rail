@@ -1,5 +1,11 @@
 export {
   LAYERZERO_TRON_USDT_ADDRESS,
+  ROBINHOOD_MAINNET_CHAIN_ID,
+  ROBINHOOD_NUMERIC_CHAIN_ID,
+  ROBINHOOD_USDG,
+  ROBINHOOD_USDG_ADDRESS,
+  SOLANA_USDG,
+  SOLANA_USDG_MINT,
   SOLANA_MAINNET_CHAIN_ID,
   SOLANA_USDT,
   SOLANA_USDT_MINT,
@@ -19,3 +25,4 @@ export type {
   LayerZeroUserStep,
   TronTransactionPolicyContext,
 } from "./types.js";
+export { createLayerZeroUsdgRobinhoodToSolana } from "./usdg.js";

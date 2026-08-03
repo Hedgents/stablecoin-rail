@@ -10,6 +10,18 @@ import {
   type WalletStep,
 } from "@hedgents/stablecoin-rail";
 import {
+  amount,
+  chooseQuote,
+  destinationReference,
+  etaSeconds,
+  expiresAt,
+  isRecord,
+  QUOTE_ID,
+  sameAsset,
+  SOLANA_ADDRESS,
+  TRON_ADDRESS,
+} from "./shared.js";
+import {
   LAYERZERO_TRON_USDT_ADDRESS,
   SOLANA_MAINNET_CHAIN_ID,
   SOLANA_USDT,
@@ -26,24 +38,6 @@ import type {
 
 const PLUGIN_ID = "layerzero-usdt0-tron-solana";
 const OPAQUE_SCHEMA = "hedgents.layerzero.usdt0.tron-solana.v1";
-const QUOTE_ID = /^0x[0-9a-fA-F]{64}$/;
-const TRON_ADDRESS = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
-const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const INTEGER = /^\d+$/;
-
-type RecordValue = Record<string, unknown>;
-
-function isRecord(value: unknown): value is RecordValue {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function sameAsset(left: AssetDescriptor, right: AssetDescriptor) {
-  return (
-    left.chainId === right.chainId &&
-    left.assetId === right.assetId &&
-    left.decimals === right.decimals
-  );
-}
 
 function supportsRoute(intent: FundingIntent) {
   return (
@@ -54,58 +48,6 @@ function supportsRoute(intent: FundingIntent) {
     SOLANA_ADDRESS.test(intent.destination.account.address) &&
     sameAsset(intent.destination.settlementAsset, SOLANA_USDT)
   );
-}
-
-function amount(value: unknown, field: string) {
-  const text = typeof value === "number" && Number.isSafeInteger(value) ? String(value) : value;
-  if (typeof text !== "string" || !INTEGER.test(text) || BigInt(text) <= 0n) {
-    throw new RailPluginError(PLUGIN_ID, "INVALID_UPSTREAM_RESPONSE", `${field} is invalid.`);
-  }
-  return text;
-}
-
-function expiresAt(value: unknown) {
-  if (typeof value !== "string") {
-    throw new RailPluginError(PLUGIN_ID, "INVALID_UPSTREAM_RESPONSE", "Quote expiry is missing.");
-  }
-  const numeric = INTEGER.test(value) ? Number(value) : Number.NaN;
-  const timestamp = Number.isFinite(numeric) ? numeric : Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    throw new RailPluginError(PLUGIN_ID, "INVALID_UPSTREAM_RESPONSE", "Quote expiry is invalid.");
-  }
-  return new Date(timestamp).toISOString();
-}
-
-function etaSeconds(quote: LayerZeroQuote) {
-  const raw = quote.duration?.estimated;
-  if (raw == null) return 0;
-  const milliseconds = Number(raw);
-  return Number.isFinite(milliseconds) && milliseconds >= 0
-    ? Math.ceil(milliseconds / 1_000)
-    : 0;
-}
-
-function chooseQuote(quotes: LayerZeroQuote[], exactSourceAmount: string) {
-  const valid = quotes.filter((quote) => {
-    try {
-      return (
-        QUOTE_ID.test(quote.id) &&
-        amount(quote.srcAmount, "srcAmount") === exactSourceAmount &&
-        BigInt(amount(quote.dstAmount, "dstAmount")) >=
-          BigInt(amount(quote.dstAmountMin, "dstAmountMin")) &&
-        !(quote.routeSteps ?? []).some((step) => step.type === "SWAP")
-      );
-    } catch {
-      return false;
-    }
-  });
-  valid.sort((left, right) => {
-    const leftMinimum = BigInt(amount(left.dstAmountMin, "dstAmountMin"));
-    const rightMinimum = BigInt(amount(right.dstAmountMin, "dstAmountMin"));
-    if (leftMinimum !== rightMinimum) return leftMinimum > rightMinimum ? -1 : 1;
-    return etaSeconds(left) - etaSeconds(right);
-  });
-  return valid[0] ?? null;
 }
 
 function opaqueRecord(quote: FundingQuote) {
@@ -216,28 +158,6 @@ function assertUnsignedTronEnvelope(transaction: { [key: string]: JsonValue }) {
   }
 }
 
-function submittedAt(event: LayerZeroExecutionEvent, fallback: string) {
-  const value = event.transaction.timestamp;
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  const milliseconds = value < 10_000_000_000 ? value * 1_000 : value;
-  return new Date(milliseconds).toISOString();
-}
-
-function destinationReference(
-  history: LayerZeroExecutionEvent[],
-  checkedAt: string,
-): TransactionReference | null {
-  const delivered = [...history]
-    .reverse()
-    .find((event) => event.event === "DELIVERED" && event.transaction.chainKey === "solana");
-  if (!delivered || delivered.transaction.hash.length === 0) return null;
-  return {
-    chainId: SOLANA_MAINNET_CHAIN_ID,
-    txId: delivered.transaction.hash,
-    submittedAt: submittedAt(delivered, checkedAt),
-  };
-}
-
 export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOptions) {
   const api = new LayerZeroTransferApi(options);
 
@@ -254,6 +174,7 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
     quote: async (intent, context): Promise<FundingQuoteDraft | null> => {
       if (!supportsRoute(intent)) return null;
       const selected = chooseQuote(
+        PLUGIN_ID,
         await api.quote(
           {
             amount: intent.inputAmountBaseUnits,
@@ -267,7 +188,7 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
         intent.inputAmountBaseUnits,
       );
       if (!selected) return null;
-      const sourceAmount = amount(selected.srcAmount, "srcAmount");
+      const sourceAmount = amount(PLUGIN_ID, selected.srcAmount, "srcAmount");
       if (sourceAmount !== intent.inputAmountBaseUnits) {
         throw new RailPluginError(
           PLUGIN_ID,
@@ -275,8 +196,8 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
           "LayerZero changed the exact source amount.",
         );
       }
-      const expectedOutput = amount(selected.dstAmount, "dstAmount");
-      const minimumOutput = amount(selected.dstAmountMin, "dstAmountMin");
+      const expectedOutput = amount(PLUGIN_ID, selected.dstAmount, "dstAmount");
+      const minimumOutput = amount(PLUGIN_ID, selected.dstAmountMin, "dstAmountMin");
       return {
         id: selected.id,
         input: { asset: intent.source.asset, amountBaseUnits: sourceAmount },
@@ -290,7 +211,7 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
         },
         fees: [],
         etaSeconds: etaSeconds(selected),
-        expiresAt: expiresAt(selected.expiresAt),
+        expiresAt: expiresAt(PLUGIN_ID, selected.expiresAt),
         executionMode: "two-phase",
         opaqueData: {
           schema: OPAQUE_SCHEMA,
@@ -388,7 +309,7 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
       const history = Array.isArray(upstream.executionHistory) ? upstream.executionHistory : [];
       const checkedAt = new Date(context.now()).toISOString();
       const refunded = history.some((event) => event.event === "REFUNDED");
-      const delivery = destinationReference(history, checkedAt);
+      const delivery = destinationReference(history, checkedAt, "solana", SOLANA_MAINNET_CHAIN_ID);
       const state = refunded
         ? "refunded"
         : upstream.status === "SUCCEEDED" && delivery
