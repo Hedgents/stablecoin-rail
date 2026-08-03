@@ -1,17 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install",
-  "buildCommand": "npm run build && npm run build --workspace=@hedgents/rail-example-bridge-demo",
+  "buildCommand": "npm run build && npm run build --workspace=@hedgents/rail-example-bridge-demo && npm run bundle:server --workspace=@hedgents/rail-example-bridge-demo",
   "outputDirectory": "examples/bridge-demo/dist",
-  "rewrites": [
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
-    }
-  ],
   "functions": {
-    "api/*.mjs": {
-      "includeFiles": "node_modules/@mayanfinance/**"
-    }
-  }
+    "api/*.mjs": { "includeFiles": "examples/bridge-demo/server-bundle.cjs" }
+  },
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }

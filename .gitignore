@@ -7,3 +7,4 @@ coverage/
 .env.*
 !.env.example
 .vercel
+examples/bridge-demo/server-bundle.cjs

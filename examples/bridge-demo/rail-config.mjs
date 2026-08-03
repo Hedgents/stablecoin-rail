@@ -9,6 +9,7 @@ import {
 } from "@hedgents/stablecoin-rail-cctp";
 import { createMayanBnbToSolana } from "@hedgents/stablecoin-rail-mayan";
 import { createLayerZeroUsdt0TronToSolana } from "@hedgents/stablecoin-rail-layerzero";
+import { fetchQuote, getSwapFromEvmTxPayload } from "@mayanfinance/swap-sdk";
 
 /**
  * The server half of the demo.
@@ -66,27 +67,9 @@ for (const [label, chain] of [
 
 // -------------------------------------------------------- Mayan (Binance-Peg)
 
-/*
- * The Mayan SDK is ESM-only, and Vercel transpiles these functions to CJS. A
- * static import or a require therefore becomes a CJS require of an ESM package
- * and fails with ERR_REQUIRE_ESM: as a static import that crashed the whole
- * function, and as a require it merely disabled this route.
- *
- * A dynamic import survives transpilation as a real async import, and stays
- * catchable so a load failure degrades one route rather than the deployment.
- * vercel.json pins the package into the bundle, since a dynamic specifier is
- * not traced.
- */
-let mayanSdk = null;
-try {
-  const sdk = await import("@mayanfinance/swap-sdk");
-  mayanSdk =
-    typeof sdk?.fetchQuote === "function"
-      ? { fetchQuote: sdk.fetchQuote, getSwapFromEvmTxPayload: sdk.getSwapFromEvmTxPayload }
-      : null;
-} catch (cause) {
-  console.warn("Mayan SDK unavailable, BNB route disabled:", cause?.message ?? cause);
-}
+// Bundled into the function by esbuild, so no ESM/CJS boundary survives to
+// runtime. See the note in vercel.json's build command.
+const mayanSdk = { fetchQuote, getSwapFromEvmTxPayload };
 
 const BNB_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 if (mayanSdk) {

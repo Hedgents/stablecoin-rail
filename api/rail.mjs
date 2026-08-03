@@ -1,4 +1,7 @@
-import { handle } from "../examples/bridge-demo/rail-config.mjs";
+import { createRequire } from "node:module";
+
+/* See api/routes.mjs for why this loads a pre-bundled CJS build. */
+const { handle } = createRequire(import.meta.url)("../examples/bridge-demo/server-bundle.cjs");
 
 export default async function handler(request, response) {
   if (request.method !== "POST") {
