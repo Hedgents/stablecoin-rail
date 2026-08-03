@@ -28,7 +28,30 @@ The core requests the action quote twice for non-atomic UX: once to compare comp
 
 ## Quote ranking
 
-The core compares the destination action's minimum output. All successful action quotes must return the same output asset and decimals for a single intent. The higher guaranteed output wins; ETA is the tie-breaker.
+The core compares the guaranteed output the user actually receives: the destination action's minimum output when the intent has an action, and the funding route's minimum settlement output when it does not. All successful quotes for a single intent must return the same output asset and decimals. The higher guaranteed output wins; ETA is the tie-breaker.
+
+## Proving your plugin
+
+Do not rely on your own test doubles to tell you the contract is satisfied. The core ships an executable version of it:
+
+```ts
+import { fundingProviderConformance } from "@hedgents/stablecoin-rail/testing";
+
+for (const item of fundingProviderConformance({
+  plugin: myProvider,
+  supportedIntent,     // an intent you serve
+  unsupportedIntent,   // an intent on a chain or asset you must decline
+  now: () => FIXED_TIME,
+})) {
+  test(item.name, () => item.run());
+}
+```
+
+`destinationActionConformance` does the same for destination actions. Cases are returned as plain `{ name, run }` objects rather than registered with a test runner, so any framework works.
+
+The suite asserts what the core actually depends on: `supports()` declines foreign intents, `quote()` returns `null` rather than throwing for them, the quoted input matches the intent exactly, `minimumOutput` never exceeds `expectedOutput`, execution stays `two-phase`, `prepare()` emits valid wallet steps, and `getStatus()` rejects a reference from an unrelated chain. Stub your upstream HTTP layer; no case performs network I/O.
+
+If a case fails, fix the plugin. If you believe a case asserts something the contract does not require, open an issue rather than working around it.
 
 ## Error behavior
 
