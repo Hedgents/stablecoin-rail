@@ -78,3 +78,30 @@ A provider's status API usually proves that delivery happened, not how much arri
 `RailClientOptions.settlementVerifier` closes that gap. The core consults it only where the provider left the amount unproven: a completed transfer with delivery evidence and no stated amount. A verified amount below the funding quote's guaranteed minimum throws `SETTLEMENT_BELOW_MINIMUM` and the flow stops; a foreign asset throws `SETTLEMENT_ASSET_MISMATCH`. A `null` result preserves the quoted-minimum fallback, so an indexing lag degrades rather than breaks a flow whose funds have already moved.
 
 `@hedgents/stablecoin-rail-solana` implements this for any Solana settlement asset by reading the destination token account's balance delta.
+
+## Remote transport
+
+Provider credentials, target allowlists, and abuse controls must not reach a browser. `@hedgents/stablecoin-rail/remote` splits any plugin across the network without changing its contract.
+
+```ts
+// server: a Next.js route, an Express endpoint, a Worker
+import { createRailHandler } from "@hedgents/stablecoin-rail/remote";
+const handle = createRailHandler({ fundingProviders: [cctp, mayan] });
+export async function POST(request) {
+  return Response.json(await handle(await request.json()));
+}
+
+// client: the same plugin contract, no secrets
+import { createRemoteFundingProvider } from "@hedgents/stablecoin-rail/remote";
+const cctp = createRemoteFundingProvider({ manifest, endpoint: "/api/rail" });
+```
+
+The handler is framework-neutral: it takes an already-parsed body and returns a plain object, so it never touches HTTP itself.
+
+Three properties are deliberate:
+
+- **Errors keep their code.** The handler returns `{ ok: false, error }` rather than throwing, and the client rethrows a `RailPluginError` with the original code, so fail-closed behaviour survives the hop. Only the code and message cross; a cause chain that might carry credentials is dropped.
+- **Authorization is the host's.** `authorize` runs before any plugin and can reject. The SDK ships no authentication, rate limiting, or order caps, because it cannot know your rules and pretending otherwise would invite integrators to assume protection they do not have.
+- **The transport is contract-preserving.** A provider behind it passes the same conformance suite as the direct one, and there is a test asserting exactly that.
+
+The manifest is supplied client-side because plugin registration is synchronous. `supports` may also be answered locally, since route shape is not secret; a local `true` is still re-checked server-side by the real plugin.

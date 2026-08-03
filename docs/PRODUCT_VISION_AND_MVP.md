@@ -337,6 +337,7 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - `@hedgents/stablecoin-rail-solana`: base58, associated-token-account derivation with on-curve rejection, and a balance-delta settlement verifier.
 - `@hedgents/stablecoin-rail-cctp`: source-configurable Circle CCTP V2 provider for Ethereum, Base, and Arbitrum.
 - `@hedgents/stablecoin-rail-mayan`: disclosed Binance-Peg USDC adapter route from BNB Chain, with the Mayan SDK injected rather than bundled.
+- A remote transport (`@hedgents/stablecoin-rail/remote`) keeping provider credentials server-side, verified contract-preserving by the conformance suite.
 - An executable plugin conformance suite; the USDT0 adapter passes it unmodified.
 
 ### Not completed

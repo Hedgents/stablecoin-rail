@@ -56,3 +56,7 @@ If a case fails, fix the plugin. If you believe a case asserts something the con
 ## Error behavior
 
 Throw `RailPluginError` for a known provider failure. One plugin failure does not discard valid quotes from other providers; it appears in `QuoteBatch.failures` so the UI can be honest without becoming unusable.
+
+## Keeping a plugin server-side
+
+A plugin that holds an API key must not run in a browser. Register it with `createRailHandler` on your server and hand the client a `createRemoteFundingProvider` pointing at that endpoint. The contract is unchanged, so keep it server-side by configuration rather than by writing a second implementation. See the architecture notes for the full shape.
