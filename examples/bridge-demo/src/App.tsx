@@ -12,6 +12,20 @@ import { connectEvm, connectTron, sendTokenTransfer, submitStep } from "./wallet
 
 const STORAGE_KEY = "rail-bridge-demo/flow";
 
+/** Flow phases in language someone bridging for the first time can follow. */
+const PHASE_TEXT: Record<string, string> = {
+  idle: "Not started",
+  quoting: "Looking for the best route…",
+  "quote-ready": "Ready to send",
+  "preparing-funding": "Preparing your transaction…",
+  "awaiting-source-signature": "Waiting for you to approve in your wallet",
+  "funding-pending": "On its way to Solana…",
+  "destination-ready": "Funds settled on Solana",
+  completed: "Complete",
+  refunded: "Refunded to your wallet",
+  failed: "Something went wrong",
+};
+
 interface Support {
   address: string;
   suggestedUsd: number;
@@ -268,20 +282,14 @@ function Bridge({
   return (
     <div className="shell">
       <header className="masthead">
-        <h1 className="wordmark">
-          Stablecoin<span>·</span>Rail
-        </h1>
-        <div className="readout">
-          <span>
-            routes <b>{liveCount}/{routes.length}</b>
-          </span>
-          <span>
-            signing <b>{signingEnabled ? "armed" : "off"}</b>
-          </span>
-          <span>
-            settle <b>solana</b>
-          </span>
-        </div>
+        <h1 className="wordmark">Move your stablecoins to Solana</h1>
+        <p className="tagline">
+          Send USDC or USDT from another chain and receive it in your Solana wallet. You keep
+          control of your funds the whole way.
+        </p>
+        <span className="readout">
+          {liveCount} of {routes.length} chains available
+        </span>
       </header>
 
       <p className="notice">
@@ -292,43 +300,45 @@ function Bridge({
           : "Signing is disabled on this deployment, so quotes are live but nothing can be sent."}
       </p>
 
-      {/* ------------------------------------------------ source selection */}
-      <section className="panel p1">
-        <div className="panel-head">
-          <span>Source</span>
-          <span>funding chain</span>
-        </div>
-
-        <div className="chains" role="group" aria-label="Source chain">
-          {routes.map((candidate) => (
-            <button
-              key={candidate.id}
-              type="button"
-              className="chip"
-              aria-pressed={candidate.id === routeId}
-              disabled={candidate.status !== "live"}
-              title={candidate.note}
-              onClick={() => {
-                // An account bound to one chain is not usable on another.
-                if (candidate.chainId !== route?.chainId) setAccount(null);
-                setRouteId(candidate.id);
-              }}
-            >
-              <span>
-                <i className={`led ${candidate.status}`} />
-                {candidate.label}
-              </span>
-              <em>
-                {candidate.token.symbol}
-                {candidate.status === "live" ? "" : ` · ${candidate.status}`}
-              </em>
-            </button>
-          ))}
+      <section className="card c1">
+        <div className="card-head">
+          <span>Send</span>
+          <small>from another chain</small>
         </div>
 
         <div className="leg">
-          <span className="leg-label">You send</span>
-          <div className="leg-row">
+          <label className="leg-label" htmlFor="chain">
+            Which chain are your stablecoins on?
+          </label>
+          <div className="picker">
+            <select
+              id="chain"
+              value={routeId}
+              onChange={(event) => {
+                const next = routes.find((candidate) => candidate.id === event.target.value);
+                // An account bound to one chain is not usable on another.
+                if (next && next.chainId !== route?.chainId) setAccount(null);
+                setRouteId(event.target.value);
+              }}
+            >
+              {routes.map((candidate) => (
+                <option key={candidate.id} value={candidate.id} disabled={candidate.status !== "live"}>
+                  {candidate.label} · {candidate.token.symbol}
+                  {candidate.status === "live" ? "" : "  (not available)"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {route && route.status !== "live" ? <p className="route-note">{route.note}</p> : null}
+          {route?.native === false ? (
+            <p className="route-note">
+              Heads up: the USDC on {route.label} is issued by Binance rather than Circle, so this
+              route swaps it for the Circle version on Solana.
+            </p>
+          ) : null}
+
+          <div className="amount-row">
             <input
               className="amount-in"
               value={amount}
@@ -337,14 +347,13 @@ function Bridge({
               aria-label="Amount to send"
               onChange={(event) => setAmount(event.target.value)}
             />
-            <span className="ticker">{route?.token.symbol ?? "—"}</span>
+            <span className="ticker">{route?.token.symbol ?? ""}</span>
           </div>
+
           <div className="leg-foot">
-            <span>{route?.label ?? "—"}</span>
+            <span>From your {route?.label ?? ""} wallet</span>
             <button type="button" className="ghost" onClick={onConnect} disabled={!route || busy !== null}>
-              {account
-                ? `${account.slice(0, 6)}…${account.slice(-4)}`
-                : `Connect ${route?.label ?? "wallet"}`}
+              {account ? `${account.slice(0, 6)}…${account.slice(-4)}` : "Connect wallet"}
             </button>
           </div>
         </div>
@@ -354,36 +363,36 @@ function Bridge({
         </div>
 
         <div className="leg">
-          <span className="leg-label">You receive · guaranteed</span>
-          <div className="leg-row">
+          <span className="leg-label">You&rsquo;ll receive at least</span>
+          <div className="amount-row">
             <span className={selected ? "amount-out" : "amount-out idle"}>{outputAmount}</span>
-            <span className="ticker">{route?.settlement.symbol ?? "—"}</span>
+            <span className="ticker">{route?.settlement.symbol ?? ""} on Solana</span>
           </div>
+
           <input
             className="addr"
             value={destination}
             spellCheck={false}
-            placeholder="Solana destination wallet"
-            aria-label="Solana destination wallet"
+            placeholder="Paste your Solana wallet address"
+            aria-label="Solana wallet address"
             aria-invalid={destination.length > 0 && !destinationValid}
             onChange={(event) => setDestination(event.target.value)}
           />
           <small className={`field-note ${destination.length === 0 ? "" : destinationValid ? "ok" : "bad"}`}>
             {destination.length === 0
-              ? "No wallet connection needed. This address receives the stablecoin; nothing is signed on Solana."
+              ? "No need to connect a Solana wallet. Just paste the address that should receive the money."
               : destinationValid
-                ? "Valid Solana address."
-                : "Not a valid Solana address. Funds sent to a wrong address cannot be recovered."}
+                ? "That looks like a valid Solana address."
+                : "That is not a valid Solana address. Money sent to a wrong address cannot be recovered."}
           </small>
         </div>
 
         {selected && hasSpread(selected.funding) ? (
           <p className="rate">
-            expected ≈ {amountOf(selected.funding.expectedOutput)} · guaranteed is the number you are
-            owed
+            You will most likely get about {amountOf(selected.funding.expectedOutput)}. The figure
+            above is the least you are guaranteed.
           </p>
         ) : null}
-        {rate ? <p className="rate">1 {selected!.funding.input.asset.symbol} → {rate} {selected!.funding.minimumOutput.asset.symbol}</p> : null}
       </section>
 
       <button
@@ -400,22 +409,22 @@ function Bridge({
         {busy
           ? `${busy}…`
           : !account
-            ? "Connect source wallet"
+            ? "Connect your wallet to continue"
             : selected && snapshot.phase === "quote-ready"
               ? signingEnabled
-                ? "Sign and send"
+                ? "Confirm and send"
                 : "Signing disabled on this deployment"
-              : "Find routes"}
+              : "See what you\u2019ll get"}
       </button>
 
       {error ? <p className="notice fail">{error}</p> : null}
 
       {/* ------------------------------------------------------- quotes */}
       {snapshot.batch && snapshot.batch.quotes.length > 0 ? (
-        <section className="panel p2">
-          <div className="panel-head">
-            <span>Routes</span>
-            <span>ranked by guaranteed output</span>
+        <section className="card c2">
+          <div className="card-head">
+            <span>Available routes</span>
+            <small>best guaranteed amount first</small>
           </div>
           {snapshot.batch.quotes.map((candidate) => (
             <button
@@ -456,14 +465,14 @@ function Bridge({
 
       {/* ------------------------------------------------------- ledger */}
       {selected ? (
-        <section className="panel p3">
-          <div className="panel-head">
-            <span>Costs</span>
-            <span>two phases, not atomic</span>
+        <section className="card c3">
+          <div className="card-head">
+            <span>Breakdown</span>
+            <small>all costs included</small>
           </div>
           <dl className="ledger">
             <div>
-              <dt>Send on {route?.label}</dt>
+              <dt>You send from {route?.label}</dt>
               <dd>{amountOf(selected.funding.input)}</dd>
             </div>
             {selected.funding.fees.map((fee, index) => (
@@ -473,7 +482,7 @@ function Bridge({
               </div>
             ))}
             <div className="total">
-              <dt>Guaranteed on Solana</dt>
+              <dt>You receive at least</dt>
               <dd>{amountOf(selected.funding.minimumOutput)}</dd>
             </div>
           </dl>
@@ -481,9 +490,9 @@ function Bridge({
       ) : null}
 
       {/* ---------------------------------------------------- telemetry */}
-      <section className="panel">
-        <div className="panel-head">
-          <span>Status</span>
+      <section className="card">
+        <div className="card-head">
+          <span>Progress</span>
           {snapshot.phase !== "idle" ? (
             <button
               type="button"
@@ -497,20 +506,19 @@ function Bridge({
               Reset
             </button>
           ) : (
-            <span>idle</span>
+            <small>not started</small>
           )}
         </div>
 
         <div className="telemetry">
           <span className="phase">
-            <i className={`led ${snapshot.phase === "completed" ? "live" : "gated"}`} />
-            {snapshot.phase}
-            {busy ? ` · ${busy}` : ""}
+            <i className={`dot ${snapshot.phase === "completed" ? "go" : busy ? "work" : ""}`} />
+            {PHASE_TEXT[snapshot.phase] ?? snapshot.phase}
           </span>
 
           {snapshot.fundingReference ? (
             <p className="trace">
-              source tx <b>{snapshot.fundingReference.txId}</b>
+              Sent from {route?.label ?? "source"}: <b>{snapshot.fundingReference.txId}</b>
             </p>
           ) : null}
           {snapshot.fundingStatus ? <p className="trace">{snapshot.fundingStatus.detail}</p> : null}
@@ -522,7 +530,7 @@ function Bridge({
 
           {snapshot.phase === "completed" ? (
             <div className="landed">
-              <h3>Transaction landed</h3>
+              <h3>Done. Your money has arrived.</h3>
               {selected ? (
                 <p className="trace">
                   At least {amountOf(selected.funding.minimumOutput)} is now in{" "}
@@ -574,8 +582,8 @@ function Bridge({
           ) : null}
 
           <p className="trace">
-            Flow state is written to localStorage on every transition. Reload mid-transfer and it
-            resumes; unsigned steps are discarded and re-prepared, never restored.
+            You can safely close this page. If you come back mid-transfer, it picks up where it left
+            off.
           </p>
         </div>
       </section>
