@@ -2,7 +2,7 @@
 
 :root {
   --paper: #f5f4f0;
-  --card: #ffffff;
+  --card: #fffffe;
   --sunk: #faf9f6;
   --line: #e6e3dc;
   --line-soft: #efece6;
@@ -23,14 +23,15 @@
   --sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --display: "Bricolage Grotesque", var(--sans);
   --radius: 14px;
-  --shadow: 0 1px 2px rgba(30, 37, 35, .04), 0 8px 24px -12px rgba(30, 37, 35, .12);
+  --shadow: 0 1px 2px rgba(30, 37, 35, .04), 0 10px 30px -14px rgba(30, 37, 35, .18);
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--paper);
+  min-height: 100vh;
+  background-color: var(--paper);
   color: var(--ink);
   font-family: var(--sans);
   font-size: 15px;
@@ -38,7 +39,40 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.shell { max-width: 30rem; margin: 0 auto; padding: 2.5rem 1rem 5rem; }
+/*
+ * Atmosphere, built rather than photographed. A photo behind a form where
+ * people paste wallet addresses costs legibility, and shipping one into an
+ * open-source repo drags its licence along. These are three very soft blooms
+ * of dawn light plus a fine grain: fixed, non-interactive, and low enough in
+ * contrast that nothing on top of it has to fight.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20vmax;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(38vmax 30vmax at 18% 12%, rgba(255, 209, 163, .55), transparent 62%),
+    radial-gradient(42vmax 34vmax at 84% 22%, rgba(178, 224, 209, .5), transparent 64%),
+    radial-gradient(46vmax 38vmax at 62% 92%, rgba(196, 214, 240, .45), transparent 66%),
+    radial-gradient(30vmax 26vmax at 8% 78%, rgba(240, 214, 224, .4), transparent 62%);
+  filter: blur(28px);
+  animation: drift 44s ease-in-out infinite alternate;
+}
+
+/* Fine grain stops the gradients banding on wide displays. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E");
+}
+
+.shell { max-width: 30rem; margin: 0 auto; padding: 2.5rem 1rem 5rem; position: relative; }
 
 /* ------------------------------------------------------------- masthead */
 
@@ -90,6 +124,7 @@ body {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  backdrop-filter: saturate(1.2);
   margin-bottom: .85rem;
   overflow: hidden;
   animation: rise .45s both;
@@ -357,6 +392,10 @@ code {
   to { opacity: 1; transform: none; }
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(2%, -2%, 0) scale(1.08); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
