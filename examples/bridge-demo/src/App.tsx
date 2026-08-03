@@ -38,6 +38,23 @@ function toBaseUnits(input: string, decimals: number): bigint | null {
   return value > 0n ? value : null;
 }
 
+/** "9.873555 USDC" from an AssetAmount. */
+function amountOf(amount: { amountBaseUnits: string; asset: { decimals: number; symbol: string } }): string {
+  return `${fromBaseUnits(amount.amountBaseUnits, amount.asset.decimals)} ${amount.asset.symbol}`;
+}
+
+/**
+ * Whether a route's expected and guaranteed amounts differ.
+ *
+ * CCTP fees are fixed at quote time so the two are identical, but a swap-based
+ * route quotes a range. Showing only the minimum there understates what the
+ * user will most likely receive; showing only the expected would overstate what
+ * they are actually promised.
+ */
+function hasSpread(funding: { expectedOutput: { amountBaseUnits: string }; minimumOutput: { amountBaseUnits: string } }) {
+  return funding.expectedOutput.amountBaseUnits !== funding.minimumOutput.amountBaseUnits;
+}
+
 function fromBaseUnits(value: string, decimals: number): string {
   const padded = value.padStart(decimals + 1, "0");
   const whole = padded.slice(0, padded.length - decimals);
@@ -276,7 +293,10 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
       {snapshot.batch && snapshot.batch.quotes.length > 0 ? (
         <section>
           <h2>3. Quotes</h2>
-          <p className="hint">Ranked by guaranteed settlement output, not by advertised bridge fee.</p>
+          <p className="hint">
+            Ranked by what is <em>guaranteed</em> to arrive on Solana, not by advertised bridge fee.
+            A swap-based route also shows its expected amount; the guarantee is the number you are owed.
+          </p>
           {snapshot.batch.quotes.map((candidate) => (
             <button
               key={candidate.id}
@@ -287,12 +307,12 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
             >
               <strong>{candidate.funding.providerName}</strong>
               <span>
-                at least{" "}
-                {fromBaseUnits(
-                  candidate.funding.minimumOutput.amountBaseUnits,
-                  candidate.funding.minimumOutput.asset.decimals,
-                )}{" "}
-                {candidate.funding.minimumOutput.asset.symbol}
+                {hasSpread(candidate.funding)
+                  ? `≈ ${amountOf(candidate.funding.expectedOutput)} expected`
+                  : amountOf(candidate.funding.minimumOutput)}
+              </span>
+              <span className="guaranteed">
+                at least {amountOf(candidate.funding.minimumOutput)} guaranteed
               </span>
               <small>~{candidate.totalEtaSeconds}s · expires {new Date(candidate.expiresAt).toLocaleTimeString()}</small>
             </button>
@@ -317,20 +337,21 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
           <h2>4. Send</h2>
           <dl>
             <div>
-              <dt>You send</dt>
-              <dd>
-                {fromBaseUnits(selected.funding.input.amountBaseUnits, selected.funding.input.asset.decimals)}{" "}
-                {selected.funding.input.asset.symbol}
-              </dd>
+              <dt>You send on {route?.label ?? "the source chain"}</dt>
+              <dd>{amountOf(selected.funding.input)}</dd>
             </div>
+            {hasSpread(selected.funding) ? (
+              <div>
+                <dt>Expected on Solana</dt>
+                <dd>≈ {amountOf(selected.funding.expectedOutput)}</dd>
+              </div>
+            ) : null}
             <div>
-              <dt>Guaranteed minimum received</dt>
+              <dt>
+                <strong>Guaranteed on Solana</strong>
+              </dt>
               <dd>
-                {fromBaseUnits(
-                  selected.funding.minimumOutput.amountBaseUnits,
-                  selected.funding.minimumOutput.asset.decimals,
-                )}{" "}
-                {selected.funding.minimumOutput.asset.symbol}
+                <strong>{amountOf(selected.funding.minimumOutput)}</strong>
               </dd>
             </div>
             {selected.funding.fees.map((fee, index) => (
