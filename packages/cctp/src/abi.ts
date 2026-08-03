@@ -75,3 +75,27 @@ export function encodeDepositForBurnWithHook(args: DepositForBurnArgs): `0x${str
 
   return `0x${toHex(selector(DEPOSIT_FOR_BURN_WITH_HOOK))}${head}${tail}`;
 }
+
+/**
+ * Validate an address against EIP-55 and return it unchanged.
+ *
+ * A mis-typed address is unrecoverable, and the checksum catches almost every
+ * single-character slip. Configuration is validated once at construction so a
+ * bad chain entry fails loudly instead of at signing time.
+ */
+export function assertChecksumAddress(value: string, field: string): `0x${string}` {
+  if (!ADDRESS.test(value)) throw new Error(`${field} must be a 20-byte hex address.`);
+  const body = value.slice(2);
+  const lower = body.toLowerCase();
+  // An all-one-case address carries no checksum information; accept it.
+  if (body === lower || body === body.toUpperCase()) return value as `0x${string}`;
+  const hash = toHex(keccak_256(new TextEncoder().encode(lower)));
+  for (let i = 0; i < body.length; i += 1) {
+    const expected =
+      Number.parseInt(hash[i]!, 16) >= 8 ? lower[i]!.toUpperCase() : lower[i]!;
+    if (body[i] !== expected) {
+      throw new Error(`${field} fails its EIP-55 checksum; verify the address.`);
+    }
+  }
+  return value as `0x${string}`;
+}

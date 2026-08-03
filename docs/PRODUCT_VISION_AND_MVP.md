@@ -295,8 +295,8 @@ Solana product
 
 | Stablecoin | Source | Destination | Provider | Status | Notes |
 |---|---|---|---|---|---|
-| USDC | Ethereum | Solana USDC | Circle CCTP V2 | Integration scaffold | Production server adapter and small-value mainnet proof remain required. |
-| USDC | Base | Solana USDC | Circle CCTP V2 | Planned | Reuse the verified Ethereum CCTP boundary after the first route is proven. |
+| USDC | Ethereum | Solana USDC | Circle CCTP V2 | Implemented, gated | Quote, prepare, and status are implemented and tested against recorded fixtures. No mainnet transfer has been completed, so the route must stay disabled in production. |
+| USDC | Base | Solana USDC | Circle CCTP V2 | Implemented, gated | Same code path and TokenMessenger address as Ethereum; only the domain, chain ID, and USDC address differ. Carries the same mainnet-proof gate. |
 | USDC | HyperEVM | Solana USDC | Circle CCTP | Planned | HyperCore funding is a separate user step before HyperEVM CCTP when needed. |
 | Binance-Peg USDC | BNB Chain | Solana USDC | Mayan | Integration scaffold | This is not native Circle CCTP and must be labeled as an adapter route. |
 | USDT | TRON | Solana USDT | USDT0 / LayerZero | Implemented, gated | Quote and status adapter is tested; signing awaits official target allowlist, API credentials, and mainnet proof. |
@@ -335,6 +335,7 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - Resumable flow: versioned serialization, fail-closed hydration, and mandatory re-preparation of wallet steps.
 - Settlement verification in the core, rejecting a delivery below the guaranteed minimum.
 - `@hedgents/stablecoin-rail-solana`: base58, associated-token-account derivation with on-curve rejection, and a balance-delta settlement verifier.
+- `@hedgents/stablecoin-rail-cctp`: source-configurable Circle CCTP V2 provider for Ethereum, Base, and Arbitrum.
 - An executable plugin conformance suite; the USDT0 adapter passes it unmodified.
 
 ### Not completed
@@ -346,6 +347,8 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - The official current USDT0 TRON target set has not been added.
 - No TRON → Solana small-value mainnet transfer has been completed by Hedgents.
 - Settlement verification has never run against a real delivery transaction; it is tested only against recorded RPC fixtures.
+- No CCTP route has completed a small-value mainnet transfer.
+- Circle exposes no destination-transaction identifier for a forwarded transfer, so the CCTP route proves delivery by destination balance and cannot yet report an exact received amount.
 - The Allbridge fallback is not implemented.
 - Production CCTP and Mayan server adapters remain incomplete.
 - Independent security review has not happened.

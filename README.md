@@ -14,6 +14,7 @@ Hedgents' metal terminal is the first reference application: a user can fund wit
 
 - `@hedgents/stablecoin-rail` — framework-neutral router, plugin contracts, quote ranking, and explicit flow state machine.
 - `@hedgents/stablecoin-rail-solana` — Solana address helpers and a settlement verifier that confirms the exact amount delivered.
+- `@hedgents/stablecoin-rail-cctp` — Circle CCTP V2 provider moving native USDC from Ethereum, Base, or Arbitrum into a Solana wallet.
 - `@hedgents/stablecoin-rail-layerzero` — server-side USDT0/LayerZero adapter for canonical TRON USDT → canonical Solana USDT.
 - `@hedgents/stablecoin-rail-react` — a small `useRailFlow` hook over the core state machine.
 
