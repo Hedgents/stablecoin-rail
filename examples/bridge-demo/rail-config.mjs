@@ -1,5 +1,4 @@
 import { createServer } from "node:http";
-import { createRequire } from "node:module";
 import { createRailHandler } from "@hedgents/stablecoin-rail/remote";
 import {
   ARBITRUM_MAINNET,
@@ -68,23 +67,25 @@ for (const [label, chain] of [
 // -------------------------------------------------------- Mayan (Binance-Peg)
 
 /*
- * Loaded through require rather than a dynamic import: a bare `await import()`
- * is invisible to serverless bundlers, which silently dropped the SDK and made
- * this route report unavailable in production while working locally. A literal
- * require IS traced, and unlike a static ESM import it can still be caught, so
- * a load failure degrades this one route instead of taking the whole function
- * down with it.
+ * The Mayan SDK is ESM-only, and Vercel transpiles these functions to CJS. A
+ * static import or a require therefore becomes a CJS require of an ESM package
+ * and fails with ERR_REQUIRE_ESM: as a static import that crashed the whole
+ * function, and as a require it merely disabled this route.
+ *
+ * A dynamic import survives transpilation as a real async import, and stays
+ * catchable so a load failure degrades one route rather than the deployment.
+ * vercel.json pins the package into the bundle, since a dynamic specifier is
+ * not traced.
  */
 let mayanSdk = null;
 try {
-  const sdk = createRequire(import.meta.url)("@mayanfinance/swap-sdk");
+  const sdk = await import("@mayanfinance/swap-sdk");
   mayanSdk =
     typeof sdk?.fetchQuote === "function"
       ? { fetchQuote: sdk.fetchQuote, getSwapFromEvmTxPayload: sdk.getSwapFromEvmTxPayload }
       : null;
 } catch (cause) {
   console.warn("Mayan SDK unavailable, BNB route disabled:", cause?.message ?? cause);
-  mayanSdk = null;
 }
 
 const BNB_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";

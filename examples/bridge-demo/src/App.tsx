@@ -11,21 +11,6 @@ import { useRailFlow } from "@hedgents/stablecoin-rail-react";
 import { connectEvm, connectTron, sendTokenTransfer, submitStep } from "./wallets.js";
 
 const STORAGE_KEY = "rail-bridge-demo/flow";
-/**
- * The destination is the one field where a mistake is unrecoverable, so it is
- * checked properly: a base58 string of the right length can still decode to the
- * wrong number of bytes, and only a decode proves it is a Solana address.
- *
- * No wallet connection is needed here. A funding-only intent settles into this
- * account; nothing is ever signed on Solana.
- */
-function isSolanaAddress(value: string): boolean {
-  try {
-    return decodeBase58(value.trim()).length === 32;
-  } catch {
-    return false;
-  }
-}
 
 interface Support {
   address: string;
@@ -49,30 +34,19 @@ interface Route {
   note: string;
 }
 
+interface Amount {
+  amountBaseUnits: string;
+  asset: { decimals: number; symbol: string };
+}
+
 /** Decimal string to base units, without touching floating point. */
 function toBaseUnits(input: string, decimals: number): bigint | null {
-  if (!/^\d*(\.\d*)?$/.test(input.trim()) || input.trim() === "" || input.trim() === ".") return null;
-  const [whole = "0", fraction = ""] = input.trim().split(".");
+  const text = input.trim();
+  if (!/^\d*(\.\d*)?$/.test(text) || text === "" || text === ".") return null;
+  const [whole = "0", fraction = ""] = text.split(".");
   if (fraction.length > decimals) return null;
   const value = BigInt(whole + fraction.padEnd(decimals, "0"));
   return value > 0n ? value : null;
-}
-
-/** "9.873555 USDC" from an AssetAmount. */
-function amountOf(amount: { amountBaseUnits: string; asset: { decimals: number; symbol: string } }): string {
-  return `${fromBaseUnits(amount.amountBaseUnits, amount.asset.decimals)} ${amount.asset.symbol}`;
-}
-
-/**
- * Whether a route's expected and guaranteed amounts differ.
- *
- * CCTP fees are fixed at quote time so the two are identical, but a swap-based
- * route quotes a range. Showing only the minimum there understates what the
- * user will most likely receive; showing only the expected would overstate what
- * they are actually promised.
- */
-function hasSpread(funding: { expectedOutput: { amountBaseUnits: string }; minimumOutput: { amountBaseUnits: string } }) {
-  return funding.expectedOutput.amountBaseUnits !== funding.minimumOutput.amountBaseUnits;
 }
 
 function fromBaseUnits(value: string, decimals: number): string {
@@ -80,6 +54,30 @@ function fromBaseUnits(value: string, decimals: number): string {
   const whole = padded.slice(0, padded.length - decimals);
   const fraction = padded.slice(padded.length - decimals).replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}` : whole;
+}
+
+const amountOf = (amount: Amount) =>
+  `${fromBaseUnits(amount.amountBaseUnits, amount.asset.decimals)} ${amount.asset.symbol}`;
+const bare = (amount: Amount) => fromBaseUnits(amount.amountBaseUnits, amount.asset.decimals);
+
+/**
+ * Whether a route's expected and guaranteed amounts differ. CCTP fees are fixed
+ * at quote time so the two match; a swap-based route quotes a range.
+ */
+const hasSpread = (funding: { expectedOutput: Amount; minimumOutput: Amount }) =>
+  funding.expectedOutput.amountBaseUnits !== funding.minimumOutput.amountBaseUnits;
+
+/**
+ * The destination is the one field where a mistake is unrecoverable, so it is
+ * checked properly: a base58 string of the right length can still decode to the
+ * wrong number of bytes, and only a decode proves it is a Solana address.
+ */
+function isSolanaAddress(value: string): boolean {
+  try {
+    return decodeBase58(value.trim()).length === 32;
+  } catch {
+    return false;
+  }
 }
 
 function readPersisted(): PersistedRailFlow | null {
@@ -105,7 +103,7 @@ export function App() {
         setSupport(body.support ?? null);
         setSigningEnabled(Boolean(body.signingEnabled));
       })
-      .catch(() => setLoadError("Could not reach the rail server. Is `npm run server` running?"));
+      .catch(() => setLoadError("Could not reach the rail server."));
   }, []);
 
   // One remote provider per plugin the server exposes. Nothing secret crosses:
@@ -130,18 +128,13 @@ export function App() {
     });
   }, [routes]);
 
-  if (loadError) return <main><p className="error">{loadError}</p></main>;
-  if (!routes) return <main><p>Loading routes…</p></main>;
-  if (!client) {
-    return (
-      <main>
-        <p className="error">
-          No route is live. Every provider is gated or unavailable; see the server log for the reason.
-        </p>
-      </main>
-    );
-  }
-  return <Bridge client={client} routes={routes} support={support} signingEnabled={signingEnabled} />;
+  if (loadError) return <div className="centered">{loadError}</div>;
+  if (!routes) return <div className="centered">Initialising…</div>;
+  if (!client) return <div className="centered">No route is live. Every provider is gated.</div>;
+
+  return (
+    <Bridge client={client} routes={routes} support={support} signingEnabled={signingEnabled} />
+  );
 }
 
 function Bridge({
@@ -175,7 +168,6 @@ function Bridge({
     else window.localStorage.setItem(STORAGE_KEY, JSON.stringify(flow.serialize()));
   }, [flow, flow.snapshot.revision]);
 
-  // Poll while funding is in flight.
   useEffect(() => {
     if (flow.snapshot.phase !== "funding-pending") return;
     const timer = setInterval(() => void flow.refreshFunding().catch(() => {}), 8_000);
@@ -185,6 +177,8 @@ function Bridge({
   const route = routes.find((candidate) => candidate.id === routeId) ?? null;
   const destinationValid = isSolanaAddress(destination);
   const snapshot = flow.snapshot;
+  const selected = flow.selectedQuote;
+  const liveCount = routes.filter((candidate) => candidate.status === "live").length;
 
   async function run(label: string, action: () => Promise<unknown>) {
     setBusy(label);
@@ -200,7 +194,7 @@ function Bridge({
 
   async function onConnect() {
     if (!route) return;
-    await run("Connecting", async () => {
+    await run("connecting", async () => {
       setAccount(
         route.namespace === "evm" ? await connectEvm(route.numericChainId ?? 1) : await connectTron(),
       );
@@ -210,9 +204,12 @@ function Bridge({
   async function onQuote() {
     if (!route || !account) return;
     const units = toBaseUnits(amount, route.token.decimals);
-    if (!units) throw new Error("Enter a valid amount.");
-    if (!isSolanaAddress(destination)) {
-      setError("That is not a valid Solana address. Funds sent to a wrong address cannot be recovered.");
+    if (!units) {
+      setError("Enter a valid amount.");
+      return;
+    }
+    if (!destinationValid) {
+      setError("That is not a valid Solana address.");
       return;
     }
     // A funding-only intent: no `action`, so nothing is signed on Solana and
@@ -229,7 +226,7 @@ function Bridge({
         },
       },
       destination: {
-        account: { chainId: "solana:mainnet", address: destination },
+        account: { chainId: "solana:mainnet", address: destination.trim() },
         settlementAsset: {
           chainId: "solana:mainnet",
           assetId: route.settlementAssetId,
@@ -240,12 +237,12 @@ function Bridge({
       inputAmountBaseUnits: units.toString(),
       slippageBps: 50,
     };
-    await run("Quoting", () => flow.quote(intent));
+    await run("quoting", () => flow.quote(intent));
   }
 
   async function onSign() {
     if (!account) return;
-    await run("Signing", async () => {
+    await run("signing", async () => {
       const snap = await flow.prepareFunding();
       let fundingHash: string | null = null;
       for (const step of snap.fundingSteps as WalletStep[]) {
@@ -262,126 +259,188 @@ function Bridge({
     });
   }
 
-  const selected = flow.selectedQuote;
+  const outputAmount = selected ? bare(selected.funding.minimumOutput) : "0.00";
+  const rate =
+    selected && Number(bare(selected.funding.input)) > 0
+      ? (Number(outputAmount) / Number(bare(selected.funding.input))).toFixed(6)
+      : null;
 
   return (
-    <main>
-      <header>
-        <h1>Stablecoin Rail</h1>
-        <p>
-          Move a stablecoin from another chain into a Solana wallet. Funding only: no destination
-          action, so nothing is ever signed on Solana. Provider credentials stay on the server.
-        </p>
+    <div className="shell">
+      <header className="masthead">
+        <h1 className="wordmark">
+          Stablecoin<span>·</span>Rail
+        </h1>
+        <div className="readout">
+          <span>
+            routes <b>{liveCount}/{routes.length}</b>
+          </span>
+          <span>
+            signing <b>{signingEnabled ? "armed" : "off"}</b>
+          </span>
+          <span>
+            settle <b>solana</b>
+          </span>
+        </div>
       </header>
 
-      <p className="banner">
-        <strong>Unaudited demonstration.</strong> No route here has completed a mainnet transfer and
-        the SDK has not had an independent security review.
+      <p className="notice">
+        <b>Unaudited demonstration.</b> No route here has completed a mainnet transfer and the SDK
+        has not had an independent security review.{" "}
         {signingEnabled
-          ? " Signing is enabled on this deployment: transactions are real and irreversible."
-          : " Signing is disabled on this deployment, so quotes are live but nothing can be sent."}
+          ? "Signing is armed: transactions are real and irreversible."
+          : "Signing is disabled on this deployment, so quotes are live but nothing can be sent."}
       </p>
 
-      {error ? <p className="error">{error}</p> : null}
+      {/* ------------------------------------------------ source selection */}
+      <section className="panel p1">
+        <div className="panel-head">
+          <span>Source</span>
+          <span>funding chain</span>
+        </div>
 
-      <section>
-        <h2>1. Route</h2>
-        <div className="routes">
+        <div className="chains" role="group" aria-label="Source chain">
           {routes.map((candidate) => (
             <button
               key={candidate.id}
               type="button"
-              className={candidate.id === routeId ? "route selected" : "route"}
+              className="chip"
+              aria-pressed={candidate.id === routeId}
               disabled={candidate.status !== "live"}
+              title={candidate.note}
               onClick={() => {
+                // An account bound to one chain is not usable on another.
                 if (candidate.chainId !== route?.chainId) setAccount(null);
                 setRouteId(candidate.id);
               }}
             >
-              <strong>{candidate.label}</strong>
               <span>
-                {candidate.token.symbol} → {candidate.settlement.symbol}
+                <i className={`led ${candidate.status}`} />
+                {candidate.label}
               </span>
-              <em className={`status ${candidate.status}`}>{candidate.status}</em>
-              <small>{candidate.note}</small>
+              <em>
+                {candidate.token.symbol}
+                {candidate.status === "live" ? "" : ` · ${candidate.status}`}
+              </em>
             </button>
           ))}
         </div>
-        {route && !route.native ? (
-          <p className="warn">
-            This route crosses an issuer boundary. {route.note}
-          </p>
-        ) : null}
-      </section>
 
-      <section>
-        <h2>2. Amount and destination</h2>
-        <p className="hint">
-          The source wallet signs, so it must be connected. The destination only receives, so an
-          address is enough.
-        </p>
-        <label>
-          Amount ({route?.token.symbol ?? "token"})
-          <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
-        </label>
-        <label>
-          Solana destination wallet
+        <div className="leg">
+          <span className="leg-label">You send</span>
+          <div className="leg-row">
+            <input
+              className="amount-in"
+              value={amount}
+              inputMode="decimal"
+              placeholder="0.00"
+              aria-label="Amount to send"
+              onChange={(event) => setAmount(event.target.value)}
+            />
+            <span className="ticker">{route?.token.symbol ?? "—"}</span>
+          </div>
+          <div className="leg-foot">
+            <span>{route?.label ?? "—"}</span>
+            <button type="button" className="ghost" onClick={onConnect} disabled={!route || busy !== null}>
+              {account
+                ? `${account.slice(0, 6)}…${account.slice(-4)}`
+                : `Connect ${route?.label ?? "wallet"}`}
+            </button>
+          </div>
+        </div>
+
+        <div className="seam">
+          <span aria-hidden="true">↓</span>
+        </div>
+
+        <div className="leg">
+          <span className="leg-label">You receive · guaranteed</span>
+          <div className="leg-row">
+            <span className={selected ? "amount-out" : "amount-out idle"}>{outputAmount}</span>
+            <span className="ticker">{route?.settlement.symbol ?? "—"}</span>
+          </div>
           <input
+            className="addr"
             value={destination}
-            onChange={(event) => setDestination(event.target.value)}
-            placeholder="Base58 address that will receive the stablecoin"
             spellCheck={false}
+            placeholder="Solana destination wallet"
+            aria-label="Solana destination wallet"
             aria-invalid={destination.length > 0 && !destinationValid}
+            onChange={(event) => setDestination(event.target.value)}
           />
-          <small className={destinationValid ? "ok" : "hint"}>
+          <small className={`field-note ${destination.length === 0 ? "" : destinationValid ? "ok" : "bad"}`}>
             {destination.length === 0
               ? "No wallet connection needed. This address receives the stablecoin; nothing is signed on Solana."
               : destinationValid
                 ? "Valid Solana address."
                 : "Not a valid Solana address. Funds sent to a wrong address cannot be recovered."}
           </small>
-        </label>
-        <div className="row">
-          <button type="button" onClick={onConnect} disabled={!route || busy !== null}>
-            {account
-              ? `Connected on ${route?.label ?? "source"} · ${account.slice(0, 6)}…${account.slice(-4)}`
-              : `Connect ${route?.label ?? "source"} wallet`}
-          </button>
-          <button type="button" onClick={onQuote} disabled={!account || !destinationValid || busy !== null}>
-            Find routes
-          </button>
         </div>
+
+        {selected && hasSpread(selected.funding) ? (
+          <p className="rate">
+            expected ≈ {amountOf(selected.funding.expectedOutput)} · guaranteed is the number you are
+            owed
+          </p>
+        ) : null}
+        {rate ? <p className="rate">1 {selected!.funding.input.asset.symbol} → {rate} {selected!.funding.minimumOutput.asset.symbol}</p> : null}
       </section>
 
+      <button
+        type="button"
+        className="execute"
+        onClick={selected && snapshot.phase === "quote-ready" ? onSign : onQuote}
+        disabled={
+          !account ||
+          !destinationValid ||
+          busy !== null ||
+          (selected != null && snapshot.phase === "quote-ready" && !signingEnabled)
+        }
+      >
+        {busy
+          ? `${busy}…`
+          : !account
+            ? "Connect source wallet"
+            : selected && snapshot.phase === "quote-ready"
+              ? signingEnabled
+                ? "Sign and send"
+                : "Signing disabled on this deployment"
+              : "Find routes"}
+      </button>
+
+      {error ? <p className="notice fail">{error}</p> : null}
+
+      {/* ------------------------------------------------------- quotes */}
       {snapshot.batch && snapshot.batch.quotes.length > 0 ? (
-        <section>
-          <h2>3. Quotes</h2>
-          <p className="hint">
-            Ranked by what is <em>guaranteed</em> to arrive on Solana, not by advertised bridge fee.
-            A swap-based route also shows its expected amount; the guarantee is the number you are owed.
-          </p>
+        <section className="panel p2">
+          <div className="panel-head">
+            <span>Routes</span>
+            <span>ranked by guaranteed output</span>
+          </div>
           {snapshot.batch.quotes.map((candidate) => (
             <button
               key={candidate.id}
               type="button"
-              className={candidate.id === snapshot.selectedQuoteId ? "quote selected" : "quote"}
-              onClick={() => flow.selectQuote(candidate.id)}
+              className="quote"
+              aria-pressed={candidate.id === snapshot.selectedQuoteId}
               disabled={snapshot.phase !== "quote-ready"}
+              onClick={() => flow.selectQuote(candidate.id)}
             >
-              <strong>{candidate.funding.providerName}</strong>
-              <span>
+              <span className="quote-provider">{candidate.funding.providerName}</span>
+              <span className="quote-out">{bare(candidate.funding.minimumOutput)}</span>
+              <span className="quote-meta">
                 {hasSpread(candidate.funding)
-                  ? `≈ ${amountOf(candidate.funding.expectedOutput)} expected`
-                  : amountOf(candidate.funding.minimumOutput)}
+                  ? `≈ ${bare(candidate.funding.expectedOutput)} expected`
+                  : "fixed fee"}{" "}
+                · ~{candidate.totalEtaSeconds}s
               </span>
-              <span className="guaranteed">
-                at least {amountOf(candidate.funding.minimumOutput)} guaranteed
+              <span className="quote-exp">
+                exp {new Date(candidate.expiresAt).toLocaleTimeString()}
               </span>
-              <small>~{candidate.totalEtaSeconds}s · expires {new Date(candidate.expiresAt).toLocaleTimeString()}</small>
             </button>
           ))}
           {snapshot.batch.failures.length > 0 ? (
-            <details>
+            <details className="declined">
               <summary>{snapshot.batch.failures.length} provider(s) declined</summary>
               <ul>
                 {snapshot.batch.failures.map((failure, index) => (
@@ -395,138 +454,131 @@ function Bridge({
         </section>
       ) : null}
 
+      {/* ------------------------------------------------------- ledger */}
       {selected ? (
-        <section>
-          <h2>4. Send</h2>
-          <dl>
+        <section className="panel p3">
+          <div className="panel-head">
+            <span>Costs</span>
+            <span>two phases, not atomic</span>
+          </div>
+          <dl className="ledger">
             <div>
-              <dt>You send on {route?.label ?? "the source chain"}</dt>
+              <dt>Send on {route?.label}</dt>
               <dd>{amountOf(selected.funding.input)}</dd>
-            </div>
-            {hasSpread(selected.funding) ? (
-              <div>
-                <dt>Expected on Solana</dt>
-                <dd>≈ {amountOf(selected.funding.expectedOutput)}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt>
-                <strong>Guaranteed on Solana</strong>
-              </dt>
-              <dd>
-                <strong>{amountOf(selected.funding.minimumOutput)}</strong>
-              </dd>
             </div>
             {selected.funding.fees.map((fee, index) => (
               <div key={index}>
                 <dt>{fee.label}</dt>
-                <dd>
-                  {fromBaseUnits(fee.amount.amountBaseUnits, fee.amount.asset.decimals)}{" "}
-                  {fee.amount.asset.symbol}
-                </dd>
+                <dd>−{amountOf(fee.amount)}</dd>
               </div>
             ))}
+            <div className="total">
+              <dt>Guaranteed on Solana</dt>
+              <dd>{amountOf(selected.funding.minimumOutput)}</dd>
+            </div>
           </dl>
-          <p className="hint">
-            Two phases, not one atomic operation: the transfer settles first, and this demo stops
-            there. Signing may take more than one wallet approval.
-          </p>
-          <button
-            type="button"
-            onClick={onSign}
-            disabled={!signingEnabled || snapshot.phase !== "quote-ready" || busy !== null}
-          >
-            {signingEnabled ? "Sign and send" : "Signing disabled on this deployment"}
-          </button>
         </section>
       ) : null}
 
-      <section>
-        <h2>Status</h2>
-        <p>
-          <code>{snapshot.phase}</code>
-          {busy ? ` · ${busy}…` : ""}
-        </p>
-        {snapshot.fundingReference ? (
-          <p className="hint">
-            Source transaction <code>{snapshot.fundingReference.txId}</code>
-          </p>
-        ) : null}
-        {snapshot.fundingStatus ? <p className="hint">{snapshot.fundingStatus.detail}</p> : null}
-        {snapshot.phase === "completed" ? (
-          <div className="landed">
-            <p className="done">Transaction landed.</p>
-            {selected ? (
-              <p className="hint">
-                At least {amountOf(selected.funding.minimumOutput)} is now in{" "}
-                <code>{selected.intent.destination.account.address}</code>.
-              </p>
-            ) : null}
+      {/* ---------------------------------------------------- telemetry */}
+      <section className="panel">
+        <div className="panel-head">
+          <span>Status</span>
+          {snapshot.phase !== "idle" ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                flow.reset();
+                setDonation(null);
+                window.localStorage.removeItem(STORAGE_KEY);
+              }}
+            >
+              Reset
+            </button>
+          ) : (
+            <span>idle</span>
+          )}
+        </div>
 
-            {support && route?.namespace === "evm" && account ? (
-              donation ? (
-                <p className="done">
-                  Thank you. Donation sent: <code>{donation.hash}</code>
+        <div className="telemetry">
+          <span className="phase">
+            <i className={`led ${snapshot.phase === "completed" ? "live" : "gated"}`} />
+            {snapshot.phase}
+            {busy ? ` · ${busy}` : ""}
+          </span>
+
+          {snapshot.fundingReference ? (
+            <p className="trace">
+              source tx <b>{snapshot.fundingReference.txId}</b>
+            </p>
+          ) : null}
+          {snapshot.fundingStatus ? <p className="trace">{snapshot.fundingStatus.detail}</p> : null}
+          {snapshot.error ? (
+            <p className="fail">
+              <code>{snapshot.error.code}</code> {snapshot.error.message}
+            </p>
+          ) : null}
+
+          {snapshot.phase === "completed" ? (
+            <div className="landed">
+              <h3>Transaction landed</h3>
+              {selected ? (
+                <p className="trace">
+                  At least {amountOf(selected.funding.minimumOutput)} is now in{" "}
+                  <b>{selected.intent.destination.account.address}</b>.
                 </p>
-              ) : (
-                <div className="support">
-                  <p>
-                    This bridge is free and the SDK behind it is open source. Your support keeps it
-                    that way.
+              ) : null}
+
+              {support && route?.namespace === "evm" && account ? (
+                donation ? (
+                  <p className="trace">
+                    Thank you. Donation tx <b>{donation.hash}</b>
                   </p>
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      run("Donating", async () => {
-                        const units = toBaseUnits(String(support.suggestedUsd), route.token.decimals);
-                        if (!units) throw new Error("Invalid donation amount.");
-                        const hash = await sendTokenTransfer({
-                          token: route.token.address,
-                          to: support.address,
-                          amountBaseUnits: units,
-                          numericChainId: route.numericChainId ?? 1,
-                          account,
-                        });
-                        setDonation({ hash });
-                      })
-                    }
-                  >
-                    Donate ${support.suggestedUsd} {route.token.symbol}
-                  </button>
-                  <small className="hint">
-                    Entirely optional and completely separate from your transfer, which is already
-                    complete. This is a new transaction on {route.label} for{" "}
-                    {support.suggestedUsd} {route.token.symbol} to <code>{support.address}</code>,
-                    and it costs gas. Nothing happens unless you sign it.
-                  </small>
-                </div>
-              )
-            ) : null}
-          </div>
-        ) : null}
-        {snapshot.error ? (
-          <p className="error">
-            <code>{snapshot.error.code}</code> {snapshot.error.message}
+                ) : (
+                  <div className="support">
+                    <p>
+                      This bridge is free and the SDK behind it is open source. Your support keeps it
+                      that way.
+                    </p>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        run("donating", async () => {
+                          const units = toBaseUnits(String(support.suggestedUsd), route.token.decimals);
+                          if (!units) throw new Error("Invalid donation amount.");
+                          const hash = await sendTokenTransfer({
+                            token: route.token.address,
+                            to: support.address,
+                            amountBaseUnits: units,
+                            numericChainId: route.numericChainId ?? 1,
+                            account,
+                          });
+                          setDonation({ hash });
+                        })
+                      }
+                    >
+                      Donate {support.suggestedUsd} {route.token.symbol}
+                    </button>
+                    <small className="field-note">
+                      Entirely optional and separate from your transfer, which is already complete. A
+                      new transaction on {route.label} to <code>{support.address}</code>, costing gas.
+                      Nothing happens unless you sign it.
+                    </small>
+                  </div>
+                )
+              ) : null}
+            </div>
+          ) : null}
+
+          <p className="trace">
+            Flow state is written to localStorage on every transition. Reload mid-transfer and it
+            resumes; unsigned steps are discarded and re-prepared, never restored.
           </p>
-        ) : null}
-        {snapshot.phase !== "idle" ? (
-          <button
-            type="button"
-            className="link"
-            onClick={() => {
-              flow.reset();
-              window.localStorage.removeItem(STORAGE_KEY);
-            }}
-          >
-            Start over
-          </button>
-        ) : null}
-        <p className="hint">
-          This flow is written to localStorage on every transition. Reload the page mid-transfer and
-          it resumes; unsigned steps are discarded and re-prepared, never restored.
-        </p>
+        </div>
       </section>
-    </main>
+    </div>
   );
 }

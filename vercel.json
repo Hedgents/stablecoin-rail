@@ -3,5 +3,15 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build && npm run build --workspace=@hedgents/rail-example-bridge-demo",
   "outputDirectory": "examples/bridge-demo/dist",
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/*.mjs": {
+      "includeFiles": "node_modules/@mayanfinance/**"
+    }
+  }
 }
