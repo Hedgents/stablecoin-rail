@@ -1,5 +1,6 @@
 import type { RailClient } from "./client.js";
 import { errorDetails, RailError } from "./errors.js";
+import type { PersistedRailFlow } from "./persistence.js";
 import type {
   DestinationActionStatus,
   FundingIntent,
@@ -63,13 +64,34 @@ const INITIAL: RailFlowSnapshot = Object.freeze({
   error: null,
 });
 
+export const INITIAL_SNAPSHOT: RailFlowSnapshot = INITIAL;
+
 export class RailFlow {
   private snapshot: RailFlowSnapshot = INITIAL;
   private readonly listeners = new Set<Listener>();
   private activeOperation = 0;
   private abortController: AbortController | null = null;
 
-  constructor(private readonly client: RailClient) {}
+  constructor(
+    private readonly client: RailClient,
+    snapshot?: RailFlowSnapshot,
+  ) {
+    if (snapshot) this.snapshot = snapshot;
+  }
+
+  /**
+   * Capture the flow for storage. The host decides where it lives, and must
+   * persist a funding reference immediately after submission: if the tab dies
+   * between a wallet approval and `markFundingSubmitted`, no SDK-side design
+   * can recover the transaction.
+   */
+  serialize(): PersistedRailFlow {
+    return {
+      version: 1,
+      persistedAt: new Date(this.client.now()).toISOString(),
+      snapshot: this.snapshot,
+    };
+  }
 
   getSnapshot = () => this.snapshot;
 

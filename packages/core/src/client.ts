@@ -1,4 +1,5 @@
 import { errorDetails, RailError } from "./errors.js";
+import { restoreSnapshot, type PersistedRailFlow } from "./persistence.js";
 import type {
   DestinationActionPlugin,
   DestinationActionQuote,
@@ -65,7 +66,8 @@ function compareQuotes(left: IntentQuote, right: IntentQuote) {
 export class RailClient {
   readonly fundingProviders: ReadonlyMap<string, FundingProviderPlugin>;
   readonly destinationActions: ReadonlyMap<string, DestinationActionPlugin>;
-  private readonly now: () => number;
+  /** Injectable clock, public so a flow can timestamp its serialized form. */
+  readonly now: () => number;
 
   constructor(options: RailClientOptions) {
     this.now = options.now ?? Date.now;
@@ -362,6 +364,24 @@ export class RailClient {
     return new RailFlow(this);
   }
 
+  /**
+   * Rebuild a flow from storage. Fails closed on an unknown version, a
+   * malformed snapshot, or a plugin that is no longer registered. Wallet steps
+   * are never restored; the caller prepares again.
+   */
+  hydrateFlow(persisted: PersistedRailFlow) {
+    const snapshot = restoreSnapshot(
+      persisted,
+      {
+        hasFundingProvider: (id) => this.fundingProviders.has(id),
+        hasDestinationAction: (id) => this.destinationActions.has(id),
+      },
+      this.now(),
+      INITIAL_SNAPSHOT,
+    );
+    return new RailFlow(this, snapshot);
+  }
+
   private requireFundingProvider(id: string) {
     const plugin = this.fundingProviders.get(id);
     if (!plugin) throw new RailError("FUNDING_PLUGIN_NOT_FOUND", `Funding provider ${id} is missing.`);
@@ -382,4 +402,6 @@ export class RailClient {
   }
 }
 
-import { RailFlow } from "./flow.js";
+// Imported at the bottom on purpose: flow.ts imports RailClient as a type, and
+// hoisting this to the top reintroduces a value-level import cycle.
+import { INITIAL_SNAPSHOT, RailFlow } from "./flow.js";

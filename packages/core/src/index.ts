@@ -6,6 +6,7 @@ export {
   type RailFlowPhase,
   type RailFlowSnapshot,
 } from "./flow.js";
+export type { PersistedRailFlow } from "./persistence.js";
 export { defineDestinationAction, defineFundingProvider } from "./plugins.js";
 export type {
   AccountDescriptor,
