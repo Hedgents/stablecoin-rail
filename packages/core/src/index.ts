@@ -34,6 +34,7 @@ export type {
   RailCallOptions,
   RailClientOptions,
   RailFee,
+  SettlementVerifier,
   SolanaTransactionRequest,
   TransactionReference,
   TronTransactionRequest,

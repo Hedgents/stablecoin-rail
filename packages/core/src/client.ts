@@ -7,6 +7,7 @@ import type {
   FundingIntent,
   FundingProviderPlugin,
   FundingQuote,
+  FundingStatus,
   IntentQuote,
   PluginContext,
   PreparationContext,
@@ -14,6 +15,7 @@ import type {
   QuoteFailure,
   RailCallOptions,
   RailClientOptions,
+  SettlementVerifier,
   TransactionReference,
 } from "./types.js";
 import {
@@ -22,6 +24,7 @@ import {
   sameAsset,
   validateActionQuote,
   validateActionStatus,
+  validateAssetAmount,
   validateFundingQuote,
   validateFundingStatus,
   validateIntent,
@@ -68,9 +71,11 @@ export class RailClient {
   readonly destinationActions: ReadonlyMap<string, DestinationActionPlugin>;
   /** Injectable clock, public so a flow can timestamp its serialized form. */
   readonly now: () => number;
+  private readonly settlementVerifier: SettlementVerifier | null;
 
   constructor(options: RailClientOptions) {
     this.now = options.now ?? Date.now;
+    this.settlementVerifier = options.settlementVerifier ?? null;
     const fundingProviders = new Map<string, FundingProviderPlugin>();
     const destinationActions = new Map<string, DestinationActionPlugin>();
 
@@ -253,12 +258,52 @@ export class RailClient {
   ) {
     validateReference(reference);
     const provider = this.requireFundingProvider(quote.funding.providerId);
+    const pluginContext = context(this.now, options);
     const status = await provider.getStatus(
       { intent: quote.intent, quote: quote.funding, reference },
-      context(this.now, options),
+      pluginContext,
     );
     validateFundingStatus(status, reference, quote.intent.destination.settlementAsset);
-    return status;
+
+    // Verify only what the provider left unproven: a settled transfer with
+    // delivery evidence but no stated amount.
+    if (
+      !this.settlementVerifier ||
+      status.state !== "completed" ||
+      status.received ||
+      !status.destinationReference
+    ) {
+      return status;
+    }
+
+    const received = await this.settlementVerifier.verify(
+      { intent: quote.intent, quote: quote.funding, status },
+      pluginContext,
+    );
+    if (!received) return status;
+
+    validateAssetAmount(received, "settlement.received");
+    if (!sameAsset(received.asset, quote.funding.minimumOutput.asset)) {
+      throw new RailError(
+        "SETTLEMENT_ASSET_MISMATCH",
+        "The verified settlement asset does not match the funding quote.",
+      );
+    }
+    if (
+      parseAmount(received.amountBaseUnits) <
+      parseAmount(quote.funding.minimumOutput.amountBaseUnits)
+    ) {
+      throw new RailError(
+        "SETTLEMENT_BELOW_MINIMUM",
+        "The verified settlement amount is below the guaranteed minimum output.",
+      );
+    }
+
+    const verified: FundingStatus = { ...status, received };
+    // Re-validate so a verifier cannot inject a status the core would have
+    // rejected coming from a provider.
+    validateFundingStatus(verified, reference, quote.intent.destination.settlementAsset);
+    return verified;
   }
 
   async refreshActionQuote(
