@@ -3,5 +3,5 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build && npm run build --workspace=@hedgents/rail-example-bridge-demo",
   "outputDirectory": "examples/bridge-demo/dist",
-  "functions": { "api/*.mjs": { "runtime": "nodejs22.x" } }
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }

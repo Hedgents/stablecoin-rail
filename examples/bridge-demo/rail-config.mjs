@@ -9,6 +9,7 @@ import {
 } from "@hedgents/stablecoin-rail-cctp";
 import { createMayanBnbToSolana } from "@hedgents/stablecoin-rail-mayan";
 import { createLayerZeroUsdt0TronToSolana } from "@hedgents/stablecoin-rail-layerzero";
+import { fetchQuote, getSwapFromEvmTxPayload } from "@mayanfinance/swap-sdk";
 
 /**
  * The server half of the demo.
@@ -66,13 +67,11 @@ for (const [label, chain] of [
 
 // -------------------------------------------------------- Mayan (Binance-Peg)
 
-let mayanSdk = null;
-try {
-  const sdk = await import("@mayanfinance/swap-sdk");
-  mayanSdk = { fetchQuote: sdk.fetchQuote, getSwapFromEvmTxPayload: sdk.getSwapFromEvmTxPayload };
-} catch {
-  mayanSdk = null;
-}
+// Imported statically: a dynamic import is invisible to serverless bundlers,
+// which silently dropped the SDK and made this route report unavailable in
+// production while working locally. The rail injects it rather than bundling
+// it, so the application is the right place to depend on it.
+const mayanSdk = { fetchQuote, getSwapFromEvmTxPayload };
 
 const BNB_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 if (mayanSdk) {
