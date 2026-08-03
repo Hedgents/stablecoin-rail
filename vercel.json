@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build && npm run build --workspace=@hedgents/rail-example-bridge-demo",
+  "outputDirectory": "examples/bridge-demo/dist",
+  "functions": { "api/*.mjs": { "runtime": "nodejs22.x" } }
+}

@@ -66,3 +66,8 @@ input[aria-invalid="true"] { border-color: #b3261e; }
 .support { border-top: 1px solid var(--line); margin-top: .9rem; padding-top: .9rem; }
 .support p { font-size: .88rem; margin-top: 0; }
 .support small { display: block; margin-top: .5rem; }
+
+.banner {
+  border: 1px solid #c98a00; border-left-width: 3px; border-radius: .4rem;
+  padding: .6rem .8rem; font-size: .82rem; margin: 0 0 1.25rem;
+}

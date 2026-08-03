@@ -94,14 +94,16 @@ function readPersisted(): PersistedRailFlow | null {
 export function App() {
   const [routes, setRoutes] = useState<Route[] | null>(null);
   const [support, setSupport] = useState<Support | null>(null);
+  const [signingEnabled, setSigningEnabled] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/routes")
       .then((response) => response.json())
-      .then((body: { routes: Route[]; support: Support | null }) => {
+      .then((body: { routes: Route[]; support: Support | null; signingEnabled?: boolean }) => {
         setRoutes(body.routes);
         setSupport(body.support ?? null);
+        setSigningEnabled(Boolean(body.signingEnabled));
       })
       .catch(() => setLoadError("Could not reach the rail server. Is `npm run server` running?"));
   }, []);
@@ -139,17 +141,19 @@ export function App() {
       </main>
     );
   }
-  return <Bridge client={client} routes={routes} support={support} />;
+  return <Bridge client={client} routes={routes} support={support} signingEnabled={signingEnabled} />;
 }
 
 function Bridge({
   client,
   routes,
   support,
+  signingEnabled,
 }: {
   client: RailClient;
   routes: Route[];
   support: Support | null;
+  signingEnabled: boolean;
 }) {
   const [routeId, setRouteId] = useState<string>(
     () => routes.find((route) => route.status === "live")?.id ?? routes[0]?.id ?? "",
@@ -269,6 +273,14 @@ function Bridge({
           action, so nothing is ever signed on Solana. Provider credentials stay on the server.
         </p>
       </header>
+
+      <p className="banner">
+        <strong>Unaudited demonstration.</strong> No route here has completed a mainnet transfer and
+        the SDK has not had an independent security review.
+        {signingEnabled
+          ? " Signing is enabled on this deployment: transactions are real and irreversible."
+          : " Signing is disabled on this deployment, so quotes are live but nothing can be sent."}
+      </p>
 
       {error ? <p className="error">{error}</p> : null}
 
@@ -422,9 +434,9 @@ function Bridge({
           <button
             type="button"
             onClick={onSign}
-            disabled={snapshot.phase !== "quote-ready" || busy !== null}
+            disabled={!signingEnabled || snapshot.phase !== "quote-ready" || busy !== null}
           >
-            Sign and send
+            {signingEnabled ? "Sign and send" : "Signing disabled on this deployment"}
           </button>
         </section>
       ) : null}
