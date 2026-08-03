@@ -631,5 +631,6 @@ git commit -m "feat(cctp): pass conformance and document the provider"
 | Circle changes the fee schedule shape | `selectFeeTier` throws on anything unexpected rather than guessing; fixtures are dated |
 | Forwarding hook layout drifts | Byte-offset assertions in `hook.test.mjs` fail loudly rather than silently misdelivering |
 | A wrong USDC address on a preset chain | Verify every address against Circle's docs in Task 4 Step 3 before use |
+| Mis-checksummed addresses in presets | **Found during Task 1:** the Ethereum USDC address used in the existing core test fixtures (`0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`) fails EIP-55; the correct casing is `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`. Harmless to our own lowercase-normalising encoder, but wallets and viem-based hosts reject it. Every address in `chains.ts` must be EIP-55 correct, and Task 4 should assert this |
 | BNB leaking into this package | An explicit conformance case asserts `eip155:56` is declined |
 | `maxFee` underfunded by rounding | `protocolFee` rounds up, with a test pinning the fractional case |

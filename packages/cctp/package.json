@@ -1,0 +1,49 @@
+{
+  "name": "@hedgents/stablecoin-rail-cctp",
+  "version": "0.1.0",
+  "description": "Circle CCTP V2 funding provider for the Hedgents stablecoin rail.",
+  "type": "module",
+  "sideEffects": false,
+  "license": "Apache-2.0",
+  "author": "Hedgents",
+  "homepage": "https://hedgents.com",
+  "keywords": [
+    "solana",
+    "usdc",
+    "cctp",
+    "circle",
+    "cross-chain"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hedgents/stablecoin-rail": "0.2.0",
+    "@hedgents/stablecoin-rail-solana": "0.1.0",
+    "@noble/hashes": "^1.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
