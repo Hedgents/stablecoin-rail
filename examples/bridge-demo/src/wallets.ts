@@ -123,3 +123,35 @@ export async function submitStep(step: WalletStep, account: string): Promise<str
   // the configuration changed underneath us.
   throw new Error(`This demo cannot sign a ${step.request.namespace} step.`);
 }
+
+const TRANSFER_SELECTOR = "0xa9059cbb"; // transfer(address,uint256)
+
+/**
+ * Send an ERC-20 transfer on the source chain.
+ *
+ * Used only for the optional donation on the completed screen. It is a plain,
+ * separate transaction: the wallet shows the exact amount and recipient, and
+ * declining to sign simply means nothing happens.
+ */
+export async function sendTokenTransfer(options: {
+  token: string;
+  to: string;
+  amountBaseUnits: bigint;
+  numericChainId: number;
+  account: string;
+}): Promise<string> {
+  const provider = window.ethereum;
+  if (!provider) throw new Error("No EVM wallet found.");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(options.to)) throw new Error("Invalid recipient address.");
+  await requireChain(provider, options.numericChainId);
+
+  const data =
+    TRANSFER_SELECTOR +
+    options.to.slice(2).toLowerCase().padStart(64, "0") +
+    options.amountBaseUnits.toString(16).padStart(64, "0");
+
+  return (await provider.request({
+    method: "eth_sendTransaction",
+    params: [{ from: options.account, to: options.token, data, value: "0x0" }],
+  })) as string;
+}

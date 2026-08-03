@@ -30,6 +30,8 @@ Everything is optional; unset values gate their route rather than breaking the a
 | `SOLANA_RPC_URL` | Destination account checks. Defaults to the public endpoint, which is rate-limited. |
 | `MAYAN_API_KEY` | Raises Mayan's rate limit. The route works without it. |
 | `LAYERZERO_API_KEY` | Required for the TRON route. |
+| `DONATION_ADDRESS` | Shows an optional support prompt on the completed screen. Unset means it never renders. |
+| `DONATION_USD` | Suggested donation amount, default 5. |
 | `USDT0_TRON_ALLOWLIST` | Comma-separated USDT0 contract addresses. Also required for TRON, and the adapter refuses to prepare a transaction without it. |
 
 ## Wallets
@@ -41,6 +43,16 @@ The chain is asserted per wallet step, from the step itself, rather than trustin
 **No Solana wallet is connected at any point.** Funding-only means the destination is a recipient, not a signer, so an address input is the whole interaction. That address is validated by actually base58-decoding it and checking for exactly 32 bytes, rather than by a character-and-length pattern: a 44-character base58 string can decode to 33 bytes and would otherwise pass. It is the one field where a mistake is unrecoverable.
 
 `src/wallets.ts` is the only wallet code and is intentionally dependency-free. The SDK returns unsigned steps; how they are presented and submitted is the application's decision.
+
+## Supporting the project
+
+With `DONATION_ADDRESS` set, the completed screen offers an optional donation.
+
+It sits **after** the transfer has landed, never during it. It is a separate transaction the user signs deliberately, showing the exact amount and recipient, and nothing is taken by inaction. It is not folded into the bridge, not pre-authorised, and not part of any quote, so it never affects route ranking or the guaranteed output.
+
+This is why it is a donation rather than a fee: the service is complete and free before it is ever mentioned, and declining costs the user nothing. A prompt placed earlier, or defaulted into the payment the user is already authorising, would be a charge dressed as a request. The EU Consumer Rights Directive treats that as inferred rather than express consent and entitles the payer to reimbursement, and it is catalogued as the "sneak into basket" deceptive pattern.
+
+EVM routes only. A TRON donation would need TRC-20 transaction building that the demo does not carry.
 
 ## Status
 

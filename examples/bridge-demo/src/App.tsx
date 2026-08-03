@@ -8,7 +8,7 @@ import {
 import { createRemoteFundingProvider } from "@hedgents/stablecoin-rail/remote";
 import { decodeBase58 } from "@hedgents/stablecoin-rail-solana";
 import { useRailFlow } from "@hedgents/stablecoin-rail-react";
-import { connectEvm, connectTron, submitStep } from "./wallets.js";
+import { connectEvm, connectTron, sendTokenTransfer, submitStep } from "./wallets.js";
 
 const STORAGE_KEY = "rail-bridge-demo/flow";
 /**
@@ -25,6 +25,11 @@ function isSolanaAddress(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+interface Support {
+  address: string;
+  suggestedUsd: number;
 }
 
 interface Route {
@@ -88,12 +93,16 @@ function readPersisted(): PersistedRailFlow | null {
 
 export function App() {
   const [routes, setRoutes] = useState<Route[] | null>(null);
+  const [support, setSupport] = useState<Support | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/routes")
       .then((response) => response.json())
-      .then((body: { routes: Route[] }) => setRoutes(body.routes))
+      .then((body: { routes: Route[]; support: Support | null }) => {
+        setRoutes(body.routes);
+        setSupport(body.support ?? null);
+      })
       .catch(() => setLoadError("Could not reach the rail server. Is `npm run server` running?"));
   }, []);
 
@@ -130,10 +139,18 @@ export function App() {
       </main>
     );
   }
-  return <Bridge client={client} routes={routes} />;
+  return <Bridge client={client} routes={routes} support={support} />;
 }
 
-function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
+function Bridge({
+  client,
+  routes,
+  support,
+}: {
+  client: RailClient;
+  routes: Route[];
+  support: Support | null;
+}) {
   const [routeId, setRouteId] = useState<string>(
     () => routes.find((route) => route.status === "live")?.id ?? routes[0]?.id ?? "",
   );
@@ -142,6 +159,7 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
   const [account, setAccount] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [donation, setDonation] = useState<{ hash: string } | null>(null);
   const persisted = useRef<PersistedRailFlow | null>(readPersisted());
 
   const flow = useRailFlow(client, { persisted: persisted.current });
@@ -423,7 +441,58 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
           </p>
         ) : null}
         {snapshot.fundingStatus ? <p className="hint">{snapshot.fundingStatus.detail}</p> : null}
-        {snapshot.phase === "completed" ? <p className="done">Settled on Solana.</p> : null}
+        {snapshot.phase === "completed" ? (
+          <div className="landed">
+            <p className="done">Transaction landed.</p>
+            {selected ? (
+              <p className="hint">
+                At least {amountOf(selected.funding.minimumOutput)} is now in{" "}
+                <code>{selected.intent.destination.account.address}</code>.
+              </p>
+            ) : null}
+
+            {support && route?.namespace === "evm" && account ? (
+              donation ? (
+                <p className="done">
+                  Thank you. Donation sent: <code>{donation.hash}</code>
+                </p>
+              ) : (
+                <div className="support">
+                  <p>
+                    This bridge is free and the SDK behind it is open source. Your support keeps it
+                    that way.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      run("Donating", async () => {
+                        const units = toBaseUnits(String(support.suggestedUsd), route.token.decimals);
+                        if (!units) throw new Error("Invalid donation amount.");
+                        const hash = await sendTokenTransfer({
+                          token: route.token.address,
+                          to: support.address,
+                          amountBaseUnits: units,
+                          numericChainId: route.numericChainId ?? 1,
+                          account,
+                        });
+                        setDonation({ hash });
+                      })
+                    }
+                  >
+                    Donate ${support.suggestedUsd} {route.token.symbol}
+                  </button>
+                  <small className="hint">
+                    Entirely optional and completely separate from your transfer, which is already
+                    complete. This is a new transaction on {route.label} for{" "}
+                    {support.suggestedUsd} {route.token.symbol} to <code>{support.address}</code>,
+                    and it costs gas. Nothing happens unless you sign it.
+                  </small>
+                </div>
+              )
+            ) : null}
+          </div>
+        ) : null}
         {snapshot.error ? (
           <p className="error">
             <code>{snapshot.error.code}</code> {snapshot.error.message}

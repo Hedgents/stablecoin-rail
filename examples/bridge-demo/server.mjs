@@ -21,6 +21,9 @@ const PORT = Number(process.env.PORT ?? 8787);
 const RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const MAYAN_API_KEY = process.env.MAYAN_API_KEY;
 const LAYERZERO_API_KEY = process.env.LAYERZERO_API_KEY;
+// Optional. Unset means the support prompt never renders at all.
+const DONATION_ADDRESS = process.env.DONATION_ADDRESS ?? null;
+const DONATION_USD = Number(process.env.DONATION_USD ?? 5);
 const USDT0_ALLOWLIST = (process.env.USDT0_TRON_ALLOWLIST ?? "")
   .split(",")
   .map((entry) => entry.trim().toLowerCase())
@@ -188,7 +191,10 @@ function json(response, status, body) {
 
 createServer((request, response) => {
   if (request.method === "GET" && request.url === "/api/routes") {
-    return json(response, 200, { routes });
+    return json(response, 200, {
+      routes,
+      support: DONATION_ADDRESS ? { address: DONATION_ADDRESS, suggestedUsd: DONATION_USD } : null,
+    });
   }
   if (request.method !== "POST" || request.url !== "/api/rail") {
     return json(response, 404, { error: "Not found" });
