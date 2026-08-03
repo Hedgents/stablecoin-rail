@@ -5,3 +5,7 @@ export {
   deriveAssociatedTokenAddress,
 } from "./addresses.js";
 export { decodeBase58, encodeBase58, toBytes32 } from "./base58.js";
+export {
+  createSolanaSettlementVerifier,
+  type SolanaSettlementVerifierOptions,
+} from "./verifier.js";
