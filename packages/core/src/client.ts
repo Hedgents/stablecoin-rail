@@ -42,9 +42,19 @@ function quoteFailure(
   return { pluginId, stage, code: detail.code, message: detail.message };
 }
 
+/**
+ * Routes are ranked by the outcome the user actually receives: the destination
+ * action's guaranteed output when there is one, and the guaranteed settlement
+ * output otherwise. Action presence is a property of the intent, so every quote
+ * in a batch has the same shape and mixed-shape ranking cannot occur.
+ */
+function rankingAmount(quote: IntentQuote): AssetAmount {
+  return quote.action?.minimumOutput ?? quote.funding.minimumOutput;
+}
+
 function compareQuotes(left: IntentQuote, right: IntentQuote) {
-  const leftOutput = parseAmount(left.action.minimumOutput.amountBaseUnits);
-  const rightOutput = parseAmount(right.action.minimumOutput.amountBaseUnits);
+  const leftOutput = parseAmount(rankingAmount(left).amountBaseUnits);
+  const rightOutput = parseAmount(rankingAmount(right).amountBaseUnits);
   if (leftOutput !== rightOutput) return leftOutput > rightOutput ? -1 : 1;
   if (left.totalEtaSeconds !== right.totalEtaSeconds) {
     return left.totalEtaSeconds - right.totalEtaSeconds;
@@ -69,7 +79,7 @@ export class RailClient {
       }
       fundingProviders.set(plugin.manifest.id, plugin);
     }
-    for (const plugin of options.destinationActions) {
+    for (const plugin of options.destinationActions ?? []) {
       validateManifest(plugin.manifest, "destination-action");
       if (destinationActions.has(plugin.manifest.id)) {
         throw new RailError("DUPLICATE_PLUGIN", `Destination action ${plugin.manifest.id} is duplicated.`);
@@ -79,9 +89,6 @@ export class RailClient {
     if (fundingProviders.size === 0) {
       throw new RailError("NO_FUNDING_PROVIDERS", "Register at least one funding provider.");
     }
-    if (destinationActions.size === 0) {
-      throw new RailError("NO_DESTINATION_ACTIONS", "Register at least one destination action.");
-    }
 
     this.fundingProviders = fundingProviders;
     this.destinationActions = destinationActions;
@@ -89,11 +96,14 @@ export class RailClient {
 
   async quote(intent: FundingIntent, options?: RailCallOptions): Promise<QuoteBatch> {
     validateIntent(intent);
-    const actionPlugin = this.destinationActions.get(intent.action.pluginId);
-    if (!actionPlugin) {
+    const actionRequest = intent.action;
+    const actionPlugin = actionRequest
+      ? this.destinationActions.get(actionRequest.pluginId)
+      : undefined;
+    if (actionRequest && !actionPlugin) {
       throw new RailError(
         "ACTION_PLUGIN_NOT_FOUND",
-        `Destination action ${intent.action.pluginId} is not registered.`,
+        `Destination action ${actionRequest.pluginId} is not registered.`,
       );
     }
 
@@ -127,6 +137,18 @@ export class RailClient {
           providerId: provider.manifest.id,
           providerName: provider.manifest.name,
         };
+
+        if (!actionPlugin) {
+          const quote: IntentQuote = {
+            id: `${provider.manifest.id}:${draft.id}`,
+            intent,
+            funding,
+            action: null,
+            expiresAt: funding.expiresAt,
+            totalEtaSeconds: funding.etaSeconds,
+          };
+          return { quote, failure: null };
+        }
 
         try {
           if (!(await actionPlugin.supports({ intent, fundingQuote: funding }))) {
@@ -183,12 +205,13 @@ export class RailClient {
 
     const quotes = outcomes.flatMap((outcome) => (outcome.quote ? [outcome.quote] : []));
     const failures = outcomes.flatMap((outcome) => (outcome.failure ? [outcome.failure] : []));
-    const referenceAsset = quotes[0]?.action.minimumOutput.asset;
+    const first = quotes[0];
+    const referenceAsset = first ? rankingAmount(first).asset : null;
     const validQuotes: IntentQuote[] = [];
     for (const quote of quotes) {
-      if (referenceAsset && !sameAsset(referenceAsset, quote.action.minimumOutput.asset)) {
+      if (referenceAsset && !sameAsset(referenceAsset, rankingAmount(quote).asset)) {
         failures.push({
-          pluginId: quote.action.pluginId,
+          pluginId: quote.action?.pluginId ?? quote.funding.providerId,
           stage: "validation",
           code: "INCOMPARABLE_OUTPUT",
           message: "The action returned an output asset that cannot be ranked with the other routes.",
@@ -241,7 +264,7 @@ export class RailClient {
     received?: AssetAmount | null,
     options?: RailCallOptions,
   ): Promise<IntentQuote> {
-    const action = this.requireDestinationAction(quote.action.pluginId);
+    const action = this.requireDestinationAction(this.requireActionQuote(quote).pluginId);
     if (received && !sameAsset(received.asset, quote.funding.minimumOutput.asset)) {
       throw new RailError(
         "STATUS_ASSET_MISMATCH",
@@ -288,19 +311,20 @@ export class RailClient {
     preparation?: PreparationContext,
     options?: RailCallOptions,
   ) {
+    const actionQuote = this.requireActionQuote(quote);
     assertQuoteFresh(quote.expiresAt, this.now());
-    const action = this.requireDestinationAction(quote.action.pluginId);
+    const action = this.requireDestinationAction(actionQuote.pluginId);
     const request = preparation
       ? {
           intent: quote.intent,
           fundingQuote: quote.funding,
-          actionQuote: quote.action,
+          actionQuote,
           preparation,
         }
       : {
           intent: quote.intent,
           fundingQuote: quote.funding,
-          actionQuote: quote.action,
+          actionQuote,
         };
     const steps = await action.prepare(request, context(this.now, options));
     validateWalletSteps(steps);
@@ -312,8 +336,9 @@ export class RailClient {
     reference: TransactionReference,
     options?: RailCallOptions,
   ) {
+    const actionQuote = this.requireActionQuote(quote);
     validateReference(reference);
-    const action = this.requireDestinationAction(quote.action.pluginId);
+    const action = this.requireDestinationAction(actionQuote.pluginId);
     if (!action.getStatus) {
       throw new RailError(
         "ACTION_STATUS_UNSUPPORTED",
@@ -324,12 +349,12 @@ export class RailClient {
       {
         intent: quote.intent,
         fundingQuote: quote.funding,
-        actionQuote: quote.action,
+        actionQuote,
         reference,
       },
       context(this.now, options),
     );
-    validateActionStatus(status, reference, quote.action.minimumOutput.asset);
+    validateActionStatus(status, reference, actionQuote.minimumOutput.asset);
     return status;
   }
 
@@ -341,6 +366,13 @@ export class RailClient {
     const plugin = this.fundingProviders.get(id);
     if (!plugin) throw new RailError("FUNDING_PLUGIN_NOT_FOUND", `Funding provider ${id} is missing.`);
     return plugin;
+  }
+
+  private requireActionQuote(quote: IntentQuote): DestinationActionQuote {
+    if (!quote.action) {
+      throw new RailError("ACTION_NOT_CONFIGURED", "This quote has no destination action.");
+    }
+    return quote.action;
   }
 
   private requireDestinationAction(id: string) {

@@ -168,7 +168,11 @@ export class RailFlow {
       this.update({
         phase:
           status.state === "completed"
-            ? "destination-ready"
+            ? // A funding-only intent has nothing left to sign, so settled funding
+              // is the terminal success state rather than a staging phase.
+              quote.intent.action
+              ? "destination-ready"
+              : "completed"
             : status.state === "refunded"
               ? "refunded"
               : status.state === "failed"
@@ -188,6 +192,7 @@ export class RailFlow {
 
   async prepareAction(preparation?: PreparationContext) {
     const selectedQuote = this.requireSelectedQuote();
+    this.requireAction(selectedQuote);
     if (this.snapshot.phase !== "destination-ready") {
       throw new RailError("INVALID_FLOW_PHASE", "The destination action requires confirmed funding.");
     }
@@ -213,6 +218,7 @@ export class RailFlow {
   }
 
   markActionSubmitted(reference: TransactionReference) {
+    this.requireAction(this.requireSelectedQuote());
     if (this.snapshot.phase !== "awaiting-destination-signature") {
       throw new RailError("INVALID_FLOW_PHASE", "The flow is not waiting for a destination signature.");
     }
@@ -222,6 +228,7 @@ export class RailFlow {
 
   async refreshAction() {
     const quote = this.requireSelectedQuote();
+    this.requireAction(quote);
     const reference = this.snapshot.actionReference;
     if (!reference || this.snapshot.phase !== "action-pending") {
       throw new RailError("INVALID_FLOW_PHASE", "No pending destination action can be checked.");
@@ -280,6 +287,13 @@ export class RailFlow {
     const quote = this.selectedQuote;
     if (!quote) throw new RailError("QUOTE_NOT_SELECTED", "Select an end-to-end quote first.");
     return quote;
+  }
+
+  private requireAction(quote: IntentQuote) {
+    if (!quote.action) {
+      throw new RailError("ACTION_NOT_CONFIGURED", "This flow has no destination action.");
+    }
+    return quote.action;
   }
 
   private replaceSelectedQuote(quote: IntentQuote) {

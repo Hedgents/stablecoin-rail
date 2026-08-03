@@ -35,7 +35,12 @@ export interface FundingIntent {
   };
   inputAmountBaseUnits: string;
   slippageBps: number;
-  action: DestinationActionRequest;
+  /**
+   * Omit for funding-only intents. When omitted the rail settles the stablecoin
+   * into the destination account and ranks routes by guaranteed settlement
+   * output rather than by application output.
+   */
+  action?: DestinationActionRequest;
   metadata?: JsonValue;
 }
 
@@ -90,7 +95,8 @@ export interface IntentQuote {
   id: string;
   intent: FundingIntent;
   funding: FundingQuote;
-  action: DestinationActionQuote;
+  /** Null for funding-only intents. */
+  action: DestinationActionQuote | null;
   expiresAt: string;
   totalEtaSeconds: number;
 }
@@ -243,7 +249,7 @@ export interface DestinationActionPlugin {
 
 export interface RailClientOptions {
   fundingProviders: FundingProviderPlugin[];
-  destinationActions: DestinationActionPlugin[];
+  destinationActions?: DestinationActionPlugin[];
   now?: () => number;
 }
 
