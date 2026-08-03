@@ -135,7 +135,24 @@ export interface SolanaTransactionRequest {
   lastValidBlockHeight?: number;
 }
 
-export type WalletRequest = EvmTransactionRequest | SolanaTransactionRequest;
+/**
+ * An unsigned TRON transaction object returned by a funding provider.
+ *
+ * TRON wallet extensions sign the structured transaction produced by a full
+ * node or routing API. Keeping it structured lets the host render and verify
+ * the signer before handing it to `tronWeb.trx.sign`.
+ */
+export interface TronTransactionRequest {
+  namespace: "tron";
+  chainId: string;
+  signerAddress: string;
+  transaction: { [key: string]: JsonValue };
+}
+
+export type WalletRequest =
+  | EvmTransactionRequest
+  | SolanaTransactionRequest
+  | TronTransactionRequest;
 
 export interface WalletStep {
   id: string;

@@ -35,6 +35,7 @@ export type {
   RailFee,
   SolanaTransactionRequest,
   TransactionReference,
+  TronTransactionRequest,
   WalletRequest,
   WalletStep,
 } from "./types.js";

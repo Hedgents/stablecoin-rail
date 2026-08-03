@@ -8,12 +8,26 @@ This is not a bridge and does not operate a solver network. It orchestrates exis
 source stablecoin → funding-provider plugin → Solana settlement asset → destination-action plugin
 ```
 
-Hedgents' metal terminal is the first reference application: a user can fund with USDC on Ethereum or BNB Chain, settle native USDC on Solana, then sign a separate Jupiter metal purchase.
+Hedgents' metal terminal is the first reference application: a user can fund with a supported stablecoin on another chain, receive the same canonical stablecoin on Solana, then sign a separate Jupiter metal purchase. No stablecoin-to-stablecoin swap is implied.
 
 ## Packages
 
 - `@hedgents/stablecoin-rail` — framework-neutral router, plugin contracts, quote ranking, and explicit flow state machine.
+- `@hedgents/stablecoin-rail-layerzero` — server-side USDT0/LayerZero adapter for canonical TRON USDT → canonical Solana USDT.
 - `@hedgents/stablecoin-rail-react` — a small `useRailFlow` hook over the core state machine.
+
+## First dedicated provider adapter
+
+```text
+TRON USDT (TR7N…Lj6t)
+  → USDT0 Legacy Mesh / LayerZero Value Transfer API
+  → Solana USDT (Es9v…wNYB)
+  → destination action
+```
+
+The LayerZero adapter pins both token contracts and both chains, ranks the provider's executable quotes by minimum output, requests fresh unsigned TRON transactions, verifies the expected signer, and tracks delivery or refunds. It requires a server-side LayerZero API key and has not yet passed a small-value mainnet transfer; keep it disabled in production until that test is complete.
+
+This is one adapter, not the scope of the rail. The product is designed to fund Solana actions with USDC, USDT, USDG, and future verified stablecoins from any supported source chain.
 
 ## Design principles
 
@@ -106,4 +120,4 @@ function FundingCheckout({ client, intent }) {
 
 This is an alpha SDK. The public interfaces are usable and tested, but production provider adapters should not be enabled before targeted mainnet tests and an independent security review.
 
-See [the architecture](docs/ARCHITECTURE.md), [UX contract](docs/UX.md), [plugin authoring guide](docs/PLUGINS.md), and [publishing checklist](docs/PUBLISHING.md).
+See [the product vision and MVP](docs/PRODUCT_VISION_AND_MVP.md), [architecture](docs/ARCHITECTURE.md), [UX contract](docs/UX.md), [plugin authoring guide](docs/PLUGINS.md), and [publishing checklist](docs/PUBLISHING.md).

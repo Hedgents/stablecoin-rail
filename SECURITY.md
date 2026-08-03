@@ -13,4 +13,6 @@ Before enabling a plugin in production:
 5. Implement refunds, timeouts, and resumable status checks.
 6. Show every approval, amount, token, recipient, and irreversible action before signing.
 
+For TRON integrations, additionally verify the wallet step's `signerAddress`, decode the structured transaction before signing, confirm the source USDT contract and bridge target against an allowlist, reject unexpected `call_value`, and budget energy/fee limits explicitly. The core validates the request envelope; a production host must still decode the provider-specific contract call.
+
 Please report vulnerabilities privately to security@hedgents.com. Do not open a public issue until a fix is available.

@@ -23,7 +23,7 @@ The boundary prevents bridge-specific data from leaking into application code an
 
 ## Signing boundary
 
-Plugins return `WalletStep[]`. Each step is an EVM or Solana request with a human-readable label. The SDK does not access wallet objects and does not submit transactions.
+Plugins return `WalletStep[]`. Each step is an EVM, Solana, or TRON request with a human-readable label. The SDK does not access wallet objects and does not submit transactions.
 
 The application must:
 
@@ -45,3 +45,9 @@ A future provider may expose an atomic or solver-filled destination call, but it
 ## Hosted control plane
 
 SDK plugins may call a project's own server or a hosted Hedgents endpoint. Secrets, commercial API keys, target allowlists, transaction simulation, rate limiting, and abuse controls belong on that server—not inside the browser package.
+
+## TRON USDT route boundary
+
+The USDT0 adapter accepts only canonical TRC-20 USDT on TRON mainnet and canonical SPL USDT on Solana mainnet. LayerZero discovery identifies the TRON contract in its 20-byte hex representation, while TRON wallets use Base58Check; the adapter pins both forms and never uses the token symbol as identity.
+
+The adapter treats LayerZero's `SUCCEEDED` state as provider delivery evidence but leaves `FundingStatus.received` empty because the status API does not prove the exact destination balance delta. The destination action therefore remains sized from the quoted minimum until an integration adds independent Solana receipt verification.

@@ -38,4 +38,8 @@ Keep valid routes when one provider fails, expose failures as secondary diagnost
 - funds settled but destination quote unavailable;
 - destination transaction failed.
 
-Once funds reach Solana, they remain the user's USDC until the user signs the destination action.
+Once funds reach Solana, they remain the user's settlement stablecoin until the user signs the destination action.
+
+## TRON resources
+
+A TRC-20 source transaction consumes TRON bandwidth and energy. Before asking for a signature, show whether the wallet has sufficient TRX/resources or whether the selected provider offers gas sponsorship. Do not let an energy failure look like a bridge timeout.

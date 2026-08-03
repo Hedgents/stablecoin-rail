@@ -255,3 +255,56 @@ test("fails closed when the action is quoted from optimistic funding output", as
   assert.equal(batch.quotes.length, 0);
   assert.equal(batch.failures[0].code, "QUOTE_AMOUNT_MISMATCH");
 });
+
+test("accepts a structured TRON wallet request and rejects an invalid signer", async () => {
+  const tronStep = {
+    id: "tron-funding",
+    kind: "funding",
+    chainId: "tron:mainnet",
+    label: "Move USDT to Solana",
+    request: {
+      namespace: "tron",
+      chainId: "tron:mainnet",
+      signerAddress: "TFG4wBaDQ8sHWWP1ACeSGnoNR6RRzevLPt",
+      transaction: {
+        visible: false,
+        txID: "a".repeat(64),
+        raw_data: { contract: [{ type: "TriggerSmartContract" }] },
+      },
+    },
+  };
+  const tronProvider = {
+    ...provider("tron", "99500000"),
+    prepare: async () => [tronStep],
+  };
+  const client = new RailClient({
+    fundingProviders: [tronProvider],
+    destinationActions: [action],
+    now: () => NOW,
+  });
+  const batch = await client.quote(intent);
+  const steps = await client.prepareFunding(batch.quotes[0]);
+  assert.equal(steps[0].request.namespace, "tron");
+
+  const unsafeClient = new RailClient({
+    fundingProviders: [
+      {
+        ...tronProvider,
+        manifest: { ...tronProvider.manifest, id: "unsafe-tron" },
+        prepare: async () => [
+          {
+            ...tronStep,
+            request: { ...tronStep.request, signerAddress: "not-a-tron-address" },
+          },
+        ],
+      },
+    ],
+    destinationActions: [action],
+    now: () => NOW,
+  });
+  const unsafeBatch = await unsafeClient.quote(intent);
+  await assert.rejects(
+    () => unsafeClient.prepareFunding(unsafeBatch.quotes[0]),
+    (error) => error instanceof RailError && error.code === "INVALID_WALLET_STEP",
+  );
+});

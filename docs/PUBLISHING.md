@@ -7,7 +7,7 @@ Before the first release:
 1. Confirm ownership of the `@hedgents` npm scope.
 2. Create the public GitHub repository and add its URL to both package manifests.
 3. Replace placeholder security contact details if needed.
-4. Run targeted Ethereum → Solana and BNB → Solana mainnet tests with small values.
+4. Run targeted Ethereum → Solana, BNB → Solana, and TRON USDT → Solana USDT mainnet tests with small values.
 5. Add audited official provider adapters.
 6. Obtain an independent review of wallet-request validation and status recovery.
 7. Run `npm test`, `npm run typecheck`, `npm run build`, and `npm run pack:check`.
@@ -18,5 +18,6 @@ Recommended initial packages:
 
 ```bash
 npm publish --workspace=@hedgents/stablecoin-rail --tag alpha
+npm publish --workspace=@hedgents/stablecoin-rail-layerzero --tag alpha
 npm publish --workspace=@hedgents/stablecoin-rail-react --tag alpha
 ```

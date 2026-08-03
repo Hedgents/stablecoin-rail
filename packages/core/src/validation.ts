@@ -13,6 +13,7 @@ import type {
 } from "./types.js";
 
 const INTEGER = /^\d+$/;
+const TRON_BASE58 = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 
 function requireText(value: string, field: string) {
   if (value.trim().length === 0) throw new RailError("INVALID_INPUT", `${field} is required.`);
@@ -183,7 +184,7 @@ export function validateWalletSteps(steps: WalletStep[]) {
       if (step.request.chainId !== `eip155:${step.request.numericChainId}`) {
         throw new RailError("CHAIN_MISMATCH", `Wallet step ${step.id} has inconsistent EVM chain IDs.`);
       }
-    } else {
+    } else if (step.request.namespace === "solana") {
       if (!step.request.chainId.startsWith("solana:")) {
         throw new RailError("CHAIN_MISMATCH", `Wallet step ${step.id} is not on a Solana chain.`);
       }
@@ -193,6 +194,26 @@ export function validateWalletSteps(steps: WalletStep[]) {
         !/^[A-Za-z0-9+/]+={0,2}$/.test(step.request.transactionBase64)
       ) {
         throw new RailError("INVALID_WALLET_STEP", `Wallet step ${step.id} has no valid Solana transaction.`);
+      }
+    } else {
+      if (!step.request.chainId.startsWith("tron:")) {
+        throw new RailError("CHAIN_MISMATCH", `Wallet step ${step.id} is not on a TRON chain.`);
+      }
+      if (!TRON_BASE58.test(step.request.signerAddress)) {
+        throw new RailError("INVALID_WALLET_STEP", `Wallet step ${step.id} has an invalid TRON signer.`);
+      }
+      const keys = Object.keys(step.request.transaction);
+      if (keys.length === 0) {
+        throw new RailError("INVALID_WALLET_STEP", `Wallet step ${step.id} has no TRON transaction.`);
+      }
+      let encoded: string;
+      try {
+        encoded = JSON.stringify(step.request.transaction);
+      } catch {
+        throw new RailError("INVALID_WALLET_STEP", `Wallet step ${step.id} has a malformed TRON transaction.`);
+      }
+      if (encoded.length > 100_000) {
+        throw new RailError("INVALID_WALLET_STEP", `Wallet step ${step.id} has an oversized TRON transaction.`);
       }
     }
   }
