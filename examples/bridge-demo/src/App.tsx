@@ -263,7 +263,10 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
               type="button"
               className={candidate.id === routeId ? "route selected" : "route"}
               disabled={candidate.status !== "live"}
-              onClick={() => setRouteId(candidate.id)}
+              onClick={() => {
+                if (candidate.chainId !== route?.chainId) setAccount(null);
+                setRouteId(candidate.id);
+              }}
             >
               <strong>{candidate.label}</strong>
               <span>
@@ -283,6 +286,10 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
 
       <section>
         <h2>2. Amount and destination</h2>
+        <p className="hint">
+          The source wallet signs, so it must be connected. The destination only receives, so an
+          address is enough.
+        </p>
         <label>
           Amount ({route?.token.symbol ?? "token"})
           <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
@@ -306,7 +313,9 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
         </label>
         <div className="row">
           <button type="button" onClick={onConnect} disabled={!route || busy !== null}>
-            {account ? `Connected ${account.slice(0, 6)}…${account.slice(-4)}` : "Connect source wallet"}
+            {account
+              ? `Connected on ${route?.label ?? "source"} · ${account.slice(0, 6)}…${account.slice(-4)}`
+              : `Connect ${route?.label ?? "source"} wallet`}
           </button>
           <button type="button" onClick={onQuote} disabled={!account || !destinationValid || busy !== null}>
             Find routes

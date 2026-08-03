@@ -34,7 +34,9 @@ Everything is optional; unset values gate their route rather than breaking the a
 
 ## Wallets
 
-EVM routes use any EIP-1193 wallet and switch chains before signing, because signing on a chain the quote never priced would broadcast the wrong thing. The TRON route uses TronLink.
+**The source wallet must be connected, because it signs.** EVM routes use any EIP-1193 wallet; the TRON route uses TronLink.
+
+The chain is asserted per wallet step, from the step itself, rather than trusting whatever the wallet was on at connect time. Asserting only at connect is not enough: a user can change route or switch networks in between, and calldata built for one chain's contracts broadcast on another would target a different address entirely. The switch result is re-read rather than assumed, since a wallet can reject it or the user can dismiss it. Changing the selected chain also drops the connection, because an account bound to one chain or namespace is not usable on another.
 
 **No Solana wallet is connected at any point.** Funding-only means the destination is a recipient, not a signer, so an address input is the whole interaction. That address is validated by actually base58-decoding it and checking for exactly 32 bytes, rather than by a character-and-length pattern: a 44-character base58 string can decode to 33 bytes and would otherwise pass. It is the one field where a mistake is unrecoverable.
 

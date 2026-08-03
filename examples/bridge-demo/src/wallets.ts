@@ -39,6 +39,27 @@ export function hasTronWallet() {
   return typeof window !== "undefined" && Boolean(window.tronLink ?? window.tronWeb);
 }
 
+/**
+ * Put the wallet on `numericChainId`, and prove it landed there.
+ *
+ * A wallet may reject the switch, or the user may dismiss it, so the result is
+ * re-read rather than assumed. Broadcasting to a chain the quote never priced
+ * would send calldata built for one chain's contracts to another's.
+ */
+async function requireChain(provider: Eip1193, numericChainId: number): Promise<void> {
+  const target = `0x${numericChainId.toString(16)}`;
+  const current = (await provider.request({ method: "eth_chainId" })) as string;
+  if (current?.toLowerCase() === target) return;
+
+  await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: target }] });
+  const confirmed = (await provider.request({ method: "eth_chainId" })) as string;
+  if (confirmed?.toLowerCase() !== target) {
+    throw new Error(
+      `The wallet is on chain ${confirmed} but this transaction is for chain ${target}. Switch networks and retry.`,
+    );
+  }
+}
+
 export async function connectEvm(numericChainId: number): Promise<string> {
   const provider = window.ethereum;
   if (!provider) throw new Error("No EVM wallet found. Install MetaMask or a compatible wallet.");
@@ -47,13 +68,7 @@ export async function connectEvm(numericChainId: number): Promise<string> {
   const account = accounts?.[0];
   if (!account) throw new Error("The EVM wallet returned no account.");
 
-  const target = `0x${numericChainId.toString(16)}`;
-  const current = (await provider.request({ method: "eth_chainId" })) as string;
-  if (current?.toLowerCase() !== target) {
-    // Signing on the wrong chain would broadcast to a chain the quote never
-    // priced, so switching is mandatory rather than advisory.
-    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: target }] });
-  }
+  await requireChain(provider, numericChainId);
   return account;
 }
 
@@ -71,6 +86,13 @@ export async function submitStep(step: WalletStep, account: string): Promise<str
   if (step.request.namespace === "evm") {
     const provider = window.ethereum;
     if (!provider) throw new Error("No EVM wallet found.");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(account)) {
+      throw new Error("The connected account is not an EVM address. Reconnect on the source chain.");
+    }
+    // Re-assert the chain per step, from the step itself, rather than trusting
+    // whatever the wallet was on when it was connected. The user may have
+    // changed route or network in between.
+    await requireChain(provider, step.request.numericChainId);
     const hash = (await provider.request({
       method: "eth_sendTransaction",
       params: [
