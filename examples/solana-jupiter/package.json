@@ -1,0 +1,14 @@
+{
+  "name": "@hedgents/rail-example-solana-jupiter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hedgents/stablecoin-rail": "0.1.0"
+  }
+}

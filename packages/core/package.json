@@ -1,0 +1,46 @@
+{
+  "name": "@hedgents/stablecoin-rail",
+  "version": "0.1.0",
+  "description": "Headless plugin SDK for stablecoin funding into Solana application actions.",
+  "type": "module",
+  "sideEffects": false,
+  "license": "Apache-2.0",
+  "author": "Hedgents",
+  "homepage": "https://hedgents.com",
+  "keywords": [
+    "solana",
+    "stablecoin",
+    "usdc",
+    "cross-chain",
+    "intent",
+    "sdk",
+    "cctp"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "clean": "rm -rf dist"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
