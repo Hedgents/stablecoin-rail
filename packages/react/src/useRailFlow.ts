@@ -1,14 +1,30 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type {
   DestinationActionStatus,
   FundingIntent,
+  PersistedRailFlow,
   PreparationContext,
   RailClient,
   TransactionReference,
 } from "@hedgents/stablecoin-rail";
 
-export function useRailFlow(client: RailClient) {
-  const flow = useMemo(() => client.createFlow(), [client]);
+export interface UseRailFlowOptions {
+  /**
+   * A previously serialized flow to resume. Read once on mount, so a changing
+   * value can never silently replace a live flow.
+   *
+   * Hydration revalidates the snapshot and drops any unsigned wallet steps, so
+   * a resumed flow must prepare again before asking for a signature.
+   */
+  persisted?: PersistedRailFlow | null;
+}
+
+export function useRailFlow(client: RailClient, options?: UseRailFlowOptions) {
+  const initial = useRef(options?.persisted ?? null);
+  const flow = useMemo(
+    () => (initial.current ? client.hydrateFlow(initial.current) : client.createFlow()),
+    [client],
+  );
   const snapshot = useSyncExternalStore(flow.subscribe, flow.getSnapshot, flow.getSnapshot);
 
   useEffect(() => () => flow.dispose(), [flow]);
@@ -37,6 +53,7 @@ export function useRailFlow(client: RailClient) {
     (status: DestinationActionStatus) => flow.completeAction(status),
     [flow],
   );
+  const serialize = useCallback(() => flow.serialize(), [flow]);
   const reset = useCallback(() => flow.reset(), [flow]);
 
   return {
@@ -52,6 +69,7 @@ export function useRailFlow(client: RailClient) {
     markActionSubmitted,
     refreshAction,
     completeAction,
+    serialize,
     reset,
   };
 }

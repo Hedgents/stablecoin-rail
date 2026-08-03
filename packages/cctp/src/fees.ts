@@ -39,7 +39,9 @@ export function selectFeeTier(payload: unknown, preferred: number): CctpFeeTier 
     throw new Error("Circle returned an invalid finalityThreshold.");
   }
   const minimumFee = chosen.minimumFee;
-  if (!Number.isInteger(minimumFee) || (minimumFee as number) < 0) {
+  // Circle's rate is fractional basis points, observed live as 1.3. Requiring
+  // an integer here rejected every real quote.
+  if (typeof minimumFee !== "number" || !Number.isFinite(minimumFee) || minimumFee < 0) {
     throw new Error("Circle returned an invalid minimumFee.");
   }
   const forwardFee = isRecord(chosen.forwardFee) ? chosen.forwardFee.med : undefined;
@@ -59,9 +61,20 @@ export function selectFeeTier(payload: unknown, preferred: number): CctpFeeTier 
  * unit.
  */
 export function protocolFee(amount: bigint, minimumFeeBps: number): bigint {
-  if (!Number.isInteger(minimumFeeBps) || minimumFeeBps < 0) {
-    throw new Error("The CCTP minimum fee must be a non-negative integer in basis points.");
+  if (typeof minimumFeeBps !== "number" || !Number.isFinite(minimumFeeBps) || minimumFeeBps < 0) {
+    throw new Error("The CCTP minimum fee must be a non-negative rate in basis points.");
   }
-  const numerator = amount * BigInt(minimumFeeBps);
-  return numerator === 0n ? 0n : (numerator + 9_999n) / 10_000n;
+  if (minimumFeeBps === 0) return 0n;
+
+  // The rate is fractional (Circle returns values such as 1.3), so it is turned
+  // into an exact bigint fraction rather than multiplied as a float.
+  const text = minimumFeeBps.toString();
+  if (text.includes("e") || text.includes("E")) {
+    throw new Error("The CCTP minimum fee rate is out of the supported range.");
+  }
+  const [whole = "0", fraction = ""] = text.split(".");
+  const numerator = BigInt(whole + fraction) * amount;
+  const denominator = 10_000n * 10n ** BigInt(fraction.length);
+  // Round up: a maxFee below what Circle charges makes the burn unusable.
+  return (numerator + denominator - 1n) / denominator;
 }

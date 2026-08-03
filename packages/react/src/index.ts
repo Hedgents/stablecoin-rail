@@ -1,1 +1,1 @@
-export { useRailFlow } from "./useRailFlow.js";
+export { useRailFlow, type UseRailFlowOptions } from "./useRailFlow.js";

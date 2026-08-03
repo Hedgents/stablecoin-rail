@@ -338,12 +338,12 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - `@hedgents/stablecoin-rail-cctp`: source-configurable Circle CCTP V2 provider for Ethereum, Base, and Arbitrum.
 - `@hedgents/stablecoin-rail-mayan`: disclosed Binance-Peg USDC adapter route from BNB Chain, with the Mayan SDK injected rather than bundled.
 - A remote transport (`@hedgents/stablecoin-rail/remote`) keeping provider credentials server-side, verified contract-preserving by the conformance suite.
+- A runnable bridge demo (`examples/bridge-demo`) exercising funding-only intents, cross-provider ranking, resume, and the remote transport.
 - An executable plugin conformance suite; the USDT0 adapter passes it unmodified.
 
 ### Not completed
 
 - No package has been published to npm.
-- The rail is not yet connected to the Hedgents terminal UI.
 - No real wallet currently executes the returned TRON request in the terminal.
 - No LayerZero production API key is configured.
 - The official current USDT0 TRON target set has not been added.
