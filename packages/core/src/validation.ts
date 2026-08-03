@@ -54,7 +54,7 @@ export function validateIntent(intent: FundingIntent) {
   requireText(intent.id, "intent.id");
   requireText(intent.source.account.address, "intent.source.account.address");
   requireText(intent.destination.account.address, "intent.destination.account.address");
-  requireText(intent.action.pluginId, "intent.action.pluginId");
+  if (intent.action) requireText(intent.action.pluginId, "intent.action.pluginId");
   validateAsset(intent.source.asset, "intent.source.asset");
   validateAsset(intent.destination.settlementAsset, "intent.destination.settlementAsset");
   if (intent.source.account.chainId !== intent.source.asset.chainId) {

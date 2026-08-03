@@ -1,19 +1,18 @@
 {
-  "name": "@hedgents/stablecoin-rail-layerzero",
+  "name": "@hedgents/stablecoin-rail-solana",
   "version": "0.1.0",
-  "description": "LayerZero Value Transfer API funding adapters for Hedgents Stablecoin Rail.",
+  "description": "Solana address helpers and settlement verification for the Hedgents stablecoin rail.",
   "type": "module",
   "sideEffects": false,
   "license": "Apache-2.0",
   "author": "Hedgents",
   "homepage": "https://hedgents.com",
   "keywords": [
-    "layerzero",
-    "usdt0",
-    "tron",
     "solana",
-    "usdt",
-    "stablecoin"
+    "stablecoin",
+    "settlement",
+    "associated-token-account",
+    "base58"
   ],
   "files": [
     "dist",
@@ -36,7 +35,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@hedgents/stablecoin-rail": "0.2.0"
+    "@hedgents/stablecoin-rail": "0.2.0",
+    "@noble/curves": "^1.9.0",
+    "@noble/hashes": "^1.8.0"
   },
   "engines": {
     "node": ">=20"

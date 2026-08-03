@@ -35,7 +35,12 @@ export interface FundingIntent {
   };
   inputAmountBaseUnits: string;
   slippageBps: number;
-  action: DestinationActionRequest;
+  /**
+   * Omit for funding-only intents. When omitted the rail settles the stablecoin
+   * into the destination account and ranks routes by guaranteed settlement
+   * output rather than by application output.
+   */
+  action?: DestinationActionRequest;
   metadata?: JsonValue;
 }
 
@@ -90,7 +95,8 @@ export interface IntentQuote {
   id: string;
   intent: FundingIntent;
   funding: FundingQuote;
-  action: DestinationActionQuote;
+  /** Null for funding-only intents. */
+  action: DestinationActionQuote | null;
   expiresAt: string;
   totalEtaSeconds: number;
 }
@@ -241,9 +247,31 @@ export interface DestinationActionPlugin {
   ): Promise<DestinationActionStatus>;
 }
 
+/**
+ * Independently confirms what actually landed on the destination chain.
+ *
+ * A provider's own status API usually proves delivery happened, not how much
+ * arrived. Without this, the destination action is sized from the quoted
+ * minimum and a short delivery would go unnoticed.
+ *
+ * Return `null` when the transfer cannot be verified yet, which preserves the
+ * quoted-minimum fallback rather than breaking the flow on an indexing lag.
+ */
+export interface SettlementVerifier {
+  verify(
+    request: {
+      intent: FundingIntent;
+      quote: FundingQuote;
+      status: FundingStatus;
+    },
+    context: PluginContext,
+  ): Promise<AssetAmount | null>;
+}
+
 export interface RailClientOptions {
   fundingProviders: FundingProviderPlugin[];
-  destinationActions: DestinationActionPlugin[];
+  destinationActions?: DestinationActionPlugin[];
+  settlementVerifier?: SettlementVerifier;
   now?: () => number;
 }
 

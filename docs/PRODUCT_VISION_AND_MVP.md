@@ -331,6 +331,11 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - Mandatory host policy hook for the current USDT0 target and recipient allowlist.
 - Delivery, failure, unknown, and refund status normalization.
 - Automated TypeScript, unit, and npm package checks.
+- Optional destination action, so the rail can be adopted for funding alone.
+- Resumable flow: versioned serialization, fail-closed hydration, and mandatory re-preparation of wallet steps.
+- Settlement verification in the core, rejecting a delivery below the guaranteed minimum.
+- `@hedgents/stablecoin-rail-solana`: base58, associated-token-account derivation with on-curve rejection, and a balance-delta settlement verifier.
+- An executable plugin conformance suite; the USDT0 adapter passes it unmodified.
 
 ### Not completed
 
@@ -340,7 +345,7 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - No LayerZero production API key is configured.
 - The official current USDT0 TRON target set has not been added.
 - No TRON → Solana small-value mainnet transfer has been completed by Hedgents.
-- Exact Solana destination balance-delta verification is not implemented for the LayerZero route.
+- Settlement verification has never run against a real delivery transaction; it is tested only against recorded RPC fixtures.
 - The Allbridge fallback is not implemented.
 - Production CCTP and Mayan server adapters remain incomplete.
 - Independent security review has not happened.

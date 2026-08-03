@@ -1,6 +1,6 @@
 {
   "name": "@hedgents/stablecoin-rail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless plugin SDK for stablecoin funding into Solana application actions.",
   "type": "module",
   "sideEffects": false,
@@ -26,6 +26,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
     }
   },
   "main": "./dist/index.js",
