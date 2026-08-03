@@ -34,7 +34,9 @@ Everything is optional; unset values gate their route rather than breaking the a
 
 ## Wallets
 
-EVM routes use any EIP-1193 wallet and switch chains before signing, because signing on a chain the quote never priced would broadcast the wrong thing. The TRON route uses TronLink. No Solana wallet is needed: funding-only means the destination is an address, not a signer.
+EVM routes use any EIP-1193 wallet and switch chains before signing, because signing on a chain the quote never priced would broadcast the wrong thing. The TRON route uses TronLink.
+
+**No Solana wallet is connected at any point.** Funding-only means the destination is a recipient, not a signer, so an address input is the whole interaction. That address is validated by actually base58-decoding it and checking for exactly 32 bytes, rather than by a character-and-length pattern: a 44-character base58 string can decode to 33 bytes and would otherwise pass. It is the one field where a mistake is unrecoverable.
 
 `src/wallets.ts` is the only wallet code and is intentionally dependency-free. The SDK returns unsigned steps; how they are presented and submitted is the application's decision.
 

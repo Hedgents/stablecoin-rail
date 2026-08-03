@@ -6,11 +6,26 @@ import {
   type WalletStep,
 } from "@hedgents/stablecoin-rail";
 import { createRemoteFundingProvider } from "@hedgents/stablecoin-rail/remote";
+import { decodeBase58 } from "@hedgents/stablecoin-rail-solana";
 import { useRailFlow } from "@hedgents/stablecoin-rail-react";
 import { connectEvm, connectTron, submitStep } from "./wallets.js";
 
 const STORAGE_KEY = "rail-bridge-demo/flow";
-const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+/**
+ * The destination is the one field where a mistake is unrecoverable, so it is
+ * checked properly: a base58 string of the right length can still decode to the
+ * wrong number of bytes, and only a decode proves it is a Solana address.
+ *
+ * No wallet connection is needed here. A funding-only intent settles into this
+ * account; nothing is ever signed on Solana.
+ */
+function isSolanaAddress(value: string): boolean {
+  try {
+    return decodeBase58(value.trim()).length === 32;
+  } catch {
+    return false;
+  }
+}
 
 interface Route {
   id: string;
@@ -146,6 +161,7 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
   }, [flow, flow.snapshot.phase]);
 
   const route = routes.find((candidate) => candidate.id === routeId) ?? null;
+  const destinationValid = isSolanaAddress(destination);
   const snapshot = flow.snapshot;
 
   async function run(label: string, action: () => Promise<unknown>) {
@@ -173,8 +189,8 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
     if (!route || !account) return;
     const units = toBaseUnits(amount, route.token.decimals);
     if (!units) throw new Error("Enter a valid amount.");
-    if (!SOLANA_ADDRESS.test(destination)) {
-      setError("Enter a valid Solana destination address.");
+    if (!isSolanaAddress(destination)) {
+      setError("That is not a valid Solana address. Funds sent to a wrong address cannot be recovered.");
       return;
     }
     // A funding-only intent: no `action`, so nothing is signed on Solana and
@@ -278,13 +294,21 @@ function Bridge({ client, routes }: { client: RailClient; routes: Route[] }) {
             onChange={(event) => setDestination(event.target.value)}
             placeholder="Base58 address that will receive the stablecoin"
             spellCheck={false}
+            aria-invalid={destination.length > 0 && !destinationValid}
           />
+          <small className={destinationValid ? "ok" : "hint"}>
+            {destination.length === 0
+              ? "No wallet connection needed. This address receives the stablecoin; nothing is signed on Solana."
+              : destinationValid
+                ? "Valid Solana address."
+                : "Not a valid Solana address. Funds sent to a wrong address cannot be recovered."}
+          </small>
         </label>
         <div className="row">
           <button type="button" onClick={onConnect} disabled={!route || busy !== null}>
             {account ? `Connected ${account.slice(0, 6)}…${account.slice(-4)}` : "Connect source wallet"}
           </button>
-          <button type="button" onClick={onQuote} disabled={!account || busy !== null}>
+          <button type="button" onClick={onQuote} disabled={!account || !destinationValid || busy !== null}>
             Find routes
           </button>
         </div>
