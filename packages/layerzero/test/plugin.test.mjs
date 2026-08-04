@@ -192,7 +192,13 @@ test("fails closed when LayerZero changes the TRON signer", async () => {
                   contract: [
                     {
                       type: "TriggerSmartContract",
-                      parameter: { value: { owner_address: OWNER_HEX, call_value: 0 } },
+                      parameter: {
+                        value: {
+                          owner_address: OWNER_HEX,
+                          contract_address: "41a614f803b6fd780986a42c78ec9c7f77e6ded13c",
+                          call_value: 0,
+                        },
+                      },
                     },
                   ],
                 },
@@ -216,7 +222,7 @@ test("fails closed when LayerZero changes the TRON signer", async () => {
   );
 });
 
-test("refuses to prepare a TRON transaction without a host allowlist policy", async () => {
+test("prepares without an allowlist, and surfaces the contract it will call", async () => {
   const plugin = createLayerZeroUsdt0TronToSolana({
     apiKey: "test-key",
     fetch: async (input) => {
@@ -235,7 +241,13 @@ test("refuses to prepare a TRON transaction without a host allowlist policy", as
                   contract: [
                     {
                       type: "TriggerSmartContract",
-                      parameter: { value: { owner_address: OWNER_HEX, call_value: 0 } },
+                      parameter: {
+                        value: {
+                          owner_address: OWNER_HEX,
+                          contract_address: "41a614f803b6fd780986a42c78ec9c7f77e6ded13c",
+                          call_value: 0,
+                        },
+                      },
                     },
                   ],
                 },
@@ -253,9 +265,62 @@ test("refuses to prepare a TRON transaction without a host allowlist policy", as
     providerName: plugin.manifest.name,
   };
 
+  // An allowlist is optional hardening now, not a precondition: the structural
+  // checks still run, and the contract being called is surfaced so a host can
+  // show it rather than the user signing an opaque envelope.
+  const steps = await plugin.prepare({ intent, quote }, { now: () => NOW });
+  assert.equal(steps.length, 1);
+  assert.match(steps[0].description, /41a614f803b6fd780986a42c78ec9c7f77e6ded13c/);
+  assert.equal(steps[0].request.namespace, "tron");
+});
+
+test("a supplied allowlist policy still runs and can veto", async () => {
+  const plugin = createLayerZeroUsdt0TronToSolana({
+    apiKey: "test-key",
+    fetch: async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/quotes")) return json(quoteResponse());
+      return json({
+        userSteps: [
+          {
+            type: "TRANSACTION",
+            chainKey: "tron",
+            chainType: "TRON",
+            signerAddress: SOURCE,
+            transaction: {
+              encoded: {
+                raw_data: {
+                  contract: [
+                    {
+                      type: "TriggerSmartContract",
+                      parameter: {
+                        value: {
+                          owner_address: OWNER_HEX,
+                          contract_address: "41deadbeef",
+                          call_value: 0,
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      });
+    },
+    validateTronTransaction: ({ transaction }) => {
+      const target = transaction.raw_data.contract[0].parameter.value.contract_address;
+      if (target !== "41a614f803b6fd780986a42c78ec9c7f77e6ded13c") {
+        throw new Error(`TRON contract ${target} is not allowlisted.`);
+      }
+    },
+  });
+  const draft = await plugin.quote(intent, { now: () => NOW });
+  const quote = { ...draft, providerId: plugin.manifest.id, providerName: plugin.manifest.name };
   await assert.rejects(
     () => plugin.prepare({ intent, quote }, { now: () => NOW }),
-    (error) => error.code === "TRANSACTION_POLICY_REQUIRED",
+    /not allowlisted/,
   );
 });
 

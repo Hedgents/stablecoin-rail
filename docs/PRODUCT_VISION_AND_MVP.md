@@ -299,10 +299,10 @@ Solana product
 | USDC | Base | Solana USDC | Circle CCTP V2 | Implemented, gated | Same code path and TokenMessenger address as Ethereum; only the domain, chain ID, and USDC address differ. Carries the same mainnet-proof gate. |
 | USDC | HyperEVM | Solana USDC | Circle CCTP | Planned | HyperCore funding is a separate user step before HyperEVM CCTP when needed. |
 | Binance-Peg USDC | BNB Chain | Solana USDC | Mayan | Implemented, gated | Quote, prepare, and status implemented and tested against a fake SDK and recorded fixtures. Not native Circle CCTP: the token is Binance-issued and Mayan swaps it, so every quote carries an explicit disclosure. No mainnet transfer completed. |
-| USDT | TRON | Solana USDT | USDT0 / LayerZero | Implemented, gated | Quote and status adapter is tested; signing awaits official target allowlist, API credentials, and mainnet proof. |
+| USDT | TRON | Solana USDT | USDT0 / LayerZero | Implemented, gated | Verified supported on LayerZero's live registry (chainKey tron, USDT isSupported). Needs only an API key; a contract allowlist is optional hardening. Awaits credentials and a mainnet proof. |
 | USDT | Ethereum | Solana USDT | Verified intent or USDT0 route | Planned | Must settle canonical USDT without a stablecoin swap. |
 | USDT | BNB Chain | Solana USDT | Verified intent or USDT0 route | Planned | Enable only after exact source token and canonical output are verified. |
-| USDG | Ethereum or Robinhood Chain | Verified Solana USDG | LayerZero OFT | Planned | Depends on a current canonical destination deployment and executable route verification. |
+| USDG | Robinhood Chain | Solana USDG | LayerZero OFT | Implemented, gated | Both deployments verified isSupported on LayerZero's live registry and against Paxos. Same issuer both ends, no swap. Needs only an API key. Awaits credentials and a mainnet proof. |
 
 ### Inventory and liquidity are independent
 
@@ -346,7 +346,7 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - No package has been published to npm.
 - No real wallet currently executes the returned TRON request in the terminal.
 - No LayerZero production API key is configured.
-- The official current USDT0 TRON target set has not been added.
+- No USDT0 TRON contract allowlist is configured. This is optional hardening rather than a precondition; the adapter enforces structural checks and surfaces the contract it will call.
 - No TRON → Solana small-value mainnet transfer has been completed by Hedgents.
 - Settlement verification has never run against a real delivery transaction; it is tested only against recorded RPC fixtures.
 - No CCTP route has completed a small-value mainnet transfer.

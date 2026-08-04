@@ -29,10 +29,10 @@ Everything is optional; unset values gate their route rather than breaking the a
 |---|---|
 | `SOLANA_RPC_URL` | Destination account checks. Defaults to the public endpoint, which is rate-limited. |
 | `MAYAN_API_KEY` | Raises Mayan's rate limit. The route works without it. |
-| `LAYERZERO_API_KEY` | Required for the TRON route. |
+| `LAYERZERO_API_KEY` | Enables both LayerZero routes: TRON USDT and Robinhood USDG. |
 | `DONATION_ADDRESS` | Shows an optional support prompt on the completed screen. Unset means it never renders. |
 | `DONATION_USD` | Suggested donation amount, default 5. |
-| `USDT0_TRON_ALLOWLIST` | Comma-separated USDT0 contract addresses. Also required for TRON, and the adapter refuses to prepare a transaction without it. |
+| `USDT0_TRON_ALLOWLIST` | Optional. Comma-separated USDT0 contract addresses. Without it the adapter still enforces its structural checks and surfaces the contract it will call; with it the target is pinned, which a production deployment should do. |
 
 ## Wallets
 

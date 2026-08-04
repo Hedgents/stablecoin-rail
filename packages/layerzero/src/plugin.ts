@@ -50,6 +50,27 @@ function supportsRoute(intent: FundingIntent) {
   );
 }
 
+/**
+ * Contract addresses a TRON envelope will call, in the hex form TRON uses
+ * on the wire.
+ *
+ * A TRON transaction buries its target in
+ * raw_data.contract[].parameter.value.contract_address, where neither a user
+ * nor a wallet UI will notice it. Surfacing it is what makes an optional
+ * allowlist a reasonable default rather than a blind spot.
+ */
+export function readTronContractTargets(transaction: { [key: string]: JsonValue }): string[] {
+  const rawData = transaction.raw_data;
+  if (!isRecord(rawData) || !Array.isArray(rawData.contract)) return [];
+  const targets: string[] = [];
+  for (const call of rawData.contract) {
+    if (!isRecord(call) || !isRecord(call.parameter) || !isRecord(call.parameter.value)) continue;
+    const target = call.parameter.value.contract_address;
+    if (typeof target === "string" && target.length > 0) targets.push(target);
+  }
+  return targets;
+}
+
 function opaqueRecord(quote: FundingQuote) {
   if (!isRecord(quote.opaqueData)) {
     throw new RailPluginError(PLUGIN_ID, "INVALID_QUOTE_DATA", "LayerZero quote data is missing.");
@@ -267,25 +288,38 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
           const description = step.description ?? "Fund Solana with USDT";
           const transaction = jsonRecord(step.transaction.encoded);
           assertUnsignedTronEnvelope(transaction);
-          if (!options.validateTronTransaction) {
-            throw new RailPluginError(
-              PLUGIN_ID,
-              "TRANSACTION_POLICY_REQUIRED",
-              "Configure an independent USDT0 TRON contract/recipient allowlist before preparing wallet requests.",
-            );
+          const targets = readTronContractTargets(transaction);
+          /*
+           * An allowlist is optional hardening rather than a precondition.
+           *
+           * It was mandatory because USDT0 warns that Legacy Mesh contracts
+           * migrate wholesale. That warning is aimed at integrators who hardcode
+           * addresses in their own contracts; this adapter instead asks
+           * LayerZero to build the transaction and then checks its structure.
+           * Requiring an allowlist here while the structurally identical EVM
+           * route needs none was an inconsistency, not a safety property.
+           *
+           * The structural checks above still stand: unsigned envelope,
+           * TriggerSmartContract only, no TRX or TRC-10 movement, and a signer
+           * that matches the intent. Supply a policy to additionally pin the
+           * contract, which a production deployment should.
+           */
+          if (options.validateTronTransaction) {
+            await options.validateTronTransaction({
+              intent,
+              quote,
+              signerAddress: step.signerAddress,
+              transaction,
+            });
           }
-          await options.validateTronTransaction({
-            intent,
-            quote,
-            signerAddress: step.signerAddress,
-            transaction,
-          });
           return {
             id: `layerzero-tron-${index + 1}`,
             kind: /approv/i.test(description) ? "approval" : "funding",
             chainId: TRON_MAINNET_CHAIN_ID,
             label: description,
-            description: "Move canonical USDT from TRON to canonical USDT on Solana.",
+            description: targets.length
+              ? `Move canonical USDT from TRON to canonical USDT on Solana. Calls ${targets.join(", ")}.`
+              : "Move canonical USDT from TRON to canonical USDT on Solana.",
             request: {
               namespace: "tron",
               chainId: TRON_MAINNET_CHAIN_ID,

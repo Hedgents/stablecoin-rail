@@ -14,7 +14,7 @@ export {
   TRON_USDT_BASE58_ADDRESS,
 } from "./assets.js";
 export { LayerZeroTransferApi } from "./http.js";
-export { createLayerZeroUsdt0TronToSolana } from "./plugin.js";
+export { createLayerZeroUsdt0TronToSolana, readTronContractTargets } from "./plugin.js";
 export type {
   LayerZeroExecutionEvent,
   LayerZeroQuote,

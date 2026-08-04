@@ -26,3 +26,11 @@ it never accesses a wallet, signs, or broadcasts. Preparation fails unless a
 host transaction policy is provided. USDT0 advises direct smart-contract
 integrators to coordinate migrations with its team, so the SDK intentionally
 does not freeze a third-party routing target forever.
+
+## Contract allowlists
+
+`validateTronTransaction` is optional hardening rather than a precondition.
+
+Without it the TRON adapter still refuses anything structurally wrong: a pre-signed envelope, a call that is not `TriggerSmartContract`, any movement of TRX or a TRC-10 token, or a signer that does not match the intent. It also surfaces the contract addresses the envelope will call, because a TRON transaction buries its target where neither a user nor a wallet UI will notice it.
+
+Supply a policy to additionally pin the target, which a production deployment should do. USDT0 migrates Legacy Mesh contracts wholesale, so treat any pinned list as something to re-verify rather than set once.

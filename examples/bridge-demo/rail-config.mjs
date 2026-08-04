@@ -123,20 +123,27 @@ if (mayanSdk) {
 const TRON_USDT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const SOLANA_USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 
-if (LAYERZERO_API_KEY && USDT0_ALLOWLIST.length > 0) {
+if (LAYERZERO_API_KEY) {
+  /*
+   * The allowlist is optional hardening, not a precondition. Without one the
+   * adapter still enforces its structural checks and surfaces the contract it
+   * will call; with one it additionally pins the target, which a production
+   * deployment should do.
+   */
   const usdt0 = createLayerZeroUsdt0TronToSolana({
     apiKey: LAYERZERO_API_KEY,
-    validateTronTransaction: ({ transaction }) => {
-      // The route stays closed until an operator supplies a verified current
-      // USDT0 target set. USDT0 asks integrators to coordinate migrations, so
-      // a hardcoded address would be unsafe.
-      for (const call of transaction.raw_data.contract) {
-        const target = String(call?.parameter?.value?.contract_address ?? "").toLowerCase();
-        if (!USDT0_ALLOWLIST.includes(target)) {
-          throw new Error(`TRON contract ${target} is not in the configured USDT0 allowlist.`);
+    ...(USDT0_ALLOWLIST.length > 0
+      ? {
+          validateTronTransaction: ({ transaction }) => {
+            for (const call of transaction.raw_data.contract) {
+              const target = String(call?.parameter?.value?.contract_address ?? "").toLowerCase();
+              if (!USDT0_ALLOWLIST.includes(target)) {
+                throw new Error(`TRON contract ${target} is not in the configured USDT0 allowlist.`);
+              }
+            }
+          },
         }
-      }
-    },
+      : {}),
   });
   fundingProviders.push(usdt0);
   routes.push({
@@ -152,7 +159,10 @@ if (LAYERZERO_API_KEY && USDT0_ALLOWLIST.length > 0) {
     settlementAssetId: `solana:mainnet/spl:${SOLANA_USDT}`,
     native: true,
     status: "live",
-    note: "Canonical USDT via USDT0 Legacy Mesh. No stablecoin conversion.",
+    note:
+      USDT0_ALLOWLIST.length > 0
+        ? "Canonical USDT via USDT0 Legacy Mesh, with a pinned contract allowlist."
+        : "Canonical USDT via USDT0 Legacy Mesh. No contract allowlist configured; set USDT0_TRON_ALLOWLIST to pin the target.",
   });
 } else {
   routes.push({
@@ -166,12 +176,9 @@ if (LAYERZERO_API_KEY && USDT0_ALLOWLIST.length > 0) {
     settlementAssetId: `solana:mainnet/spl:${SOLANA_USDT}`,
     native: true,
     status: "gated",
-    note:
-      "Gated by design. Needs LAYERZERO_API_KEY and USDT0_TRON_ALLOWLIST. " +
-      "The adapter refuses to prepare a transaction without an independently verified contract allowlist.",
+    note: "Needs LAYERZERO_API_KEY. USDT0_TRON_ALLOWLIST is optional hardening on top.",
   });
 }
-
 
 // -------------------------------------------------------- USDG (Robinhood)
 
