@@ -72,16 +72,42 @@ body::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E");
 }
 
-.shell { max-width: 30rem; margin: 0 auto; padding: 2.5rem 1rem 5rem; position: relative; }
+/*
+ * Three columns so a whole transfer is visible at once: what this is, the form
+ * itself, and the costs and progress. Nothing worth watching mid-transfer
+ * should require scrolling away from the thing you are watching.
+ */
+.shell {
+  max-width: 78rem;
+  margin: 0 auto;
+  padding: 2.25rem 1.25rem 4rem;
+  position: relative;
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 0.85fr 1.1fr 0.95fr;
+  align-items: start;
+}
+
+.col { display: grid; gap: 0; align-content: start; min-width: 0; }
+
+/* The intro column is standing context, so it stays put while the rest moves. */
+.col-intro { position: sticky; top: 2.25rem; }
+
+@media (max-width: 68rem) {
+  .shell { grid-template-columns: 1fr; max-width: 32rem; }
+  .col-intro { position: static; }
+}
 
 /* ------------------------------------------------------------- masthead */
 
-.masthead { text-align: center; margin-bottom: 1.5rem; animation: rise .45s both; }
+.masthead { margin-bottom: 1rem; animation: rise .45s both; }
+@media (max-width: 68rem) { .masthead { text-align: center; } }
 
 .wordmark {
   font-family: var(--display);
   font-weight: 700;
-  font-size: 1.4rem;
+  font-size: 1.55rem;
+  line-height: 1.2;
   letter-spacing: -.02em;
   margin: 0;
   color: var(--ink);
@@ -428,3 +454,19 @@ code {
 .band-severe { background: #fdeceb; color: var(--danger); }
 .pool-severe { border-color: #eec3bf; }
 .pool-severe .pool-bars i b, .pool-high .pool-bars i b { background: #c9721a; }
+
+
+/* ------------------------------------------------------- column tuning */
+
+.col-detail:empty::before {
+  content: "Costs and progress appear here once you have a quote.";
+  display: block;
+  padding: 1rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-faint);
+  font-size: .84rem;
+}
+.col .card { margin-bottom: .85rem; }
+.col .card:last-child { margin-bottom: 0; }
+.col .execute { margin-bottom: .85rem; }

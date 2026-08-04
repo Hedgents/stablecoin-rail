@@ -328,6 +328,8 @@ function Bridge({
 
   return (
     <div className="shell">
+      {/* Left: what this is, and the standing warning. */}
+      <div className="col col-intro">
       <header className="masthead">
         <h1 className="wordmark">Move your stablecoins to Solana</h1>
         <p className="tagline">
@@ -347,6 +349,10 @@ function Bridge({
           : "Signing is disabled on this deployment, so quotes are live but nothing can be sent."}
       </p>
 
+      </div>
+
+      {/* Middle: the transfer itself. */}
+      <div className="col col-form">
       <section className="card c1">
         <div className="card-head">
           <span>Send</span>
@@ -442,39 +448,6 @@ function Bridge({
         ) : null}
       </section>
 
-      {liquidity ? (
-        <section className={`card pool pool-${liquidity.band}`}>
-          <div className="card-head">
-            <span>Alternative route liquidity</span>
-            <small className={`band band-${liquidity.band}`}>{liquidity.band} risk</small>
-          </div>
-          <div className="pool-body">
-            <p className="pool-reason">{liquidity.reason}</p>
-            <div className="pool-bars">
-              {[liquidity.source, liquidity.destination].map((side, index) => (
-                <div key={side.chainKey}>
-                  <span>
-                    {index === 0 ? "Sending into" : "Paying out from"} {side.chainKey}
-                  </span>
-                  <strong>
-                    {Math.round(Number(side.tokenBaseUnits) / 10 ** side.decimals).toLocaleString()}{" "}
-                    {route?.token.symbol}
-                  </strong>
-                  <i aria-hidden="true">
-                    <b style={{ width: `${Math.min(100, side.tokenSharePct * 2)}%` }} />
-                  </i>
-                  <small>{side.tokenSharePct.toFixed(0)}% of pool is {route?.token.symbol} (50% is balanced)</small>
-                </div>
-              ))}
-            </div>
-            <p className="pool-note">
-              This is a pooled route, so your money leaves a pot on the other side rather than being
-              minted. The smaller that pot, the worse your rate.
-            </p>
-          </div>
-        </section>
-      ) : null}
-
       <button
         type="button"
         className="execute"
@@ -540,6 +513,43 @@ function Bridge({
               </ul>
             </details>
           ) : null}
+        </section>
+      ) : null}
+
+      </div>
+
+      {/* Right: costs and progress, so nothing needs scrolling to. */}
+      <div className="col col-detail">
+      {liquidity ? (
+        <section className={`card pool pool-${liquidity.band}`}>
+          <div className="card-head">
+            <span>Alternative route liquidity</span>
+            <small className={`band band-${liquidity.band}`}>{liquidity.band} risk</small>
+          </div>
+          <div className="pool-body">
+            <p className="pool-reason">{liquidity.reason}</p>
+            <div className="pool-bars">
+              {[liquidity.source, liquidity.destination].map((side, index) => (
+                <div key={side.chainKey}>
+                  <span>
+                    {index === 0 ? "Sending into" : "Paying out from"} {side.chainKey}
+                  </span>
+                  <strong>
+                    {Math.round(Number(side.tokenBaseUnits) / 10 ** side.decimals).toLocaleString()}{" "}
+                    {route?.token.symbol}
+                  </strong>
+                  <i aria-hidden="true">
+                    <b style={{ width: `${Math.min(100, side.tokenSharePct * 2)}%` }} />
+                  </i>
+                  <small>{side.tokenSharePct.toFixed(0)}% of pool is {route?.token.symbol} (50% is balanced)</small>
+                </div>
+              ))}
+            </div>
+            <p className="pool-note">
+              This is a pooled route, so your money leaves a pot on the other side rather than being
+              minted. The smaller that pot, the worse your rate.
+            </p>
+          </div>
         </section>
       ) : null}
 
@@ -667,6 +677,7 @@ function Bridge({
           </p>
         </div>
       </section>
+      </div>
     </div>
   );
 }
