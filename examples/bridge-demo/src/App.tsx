@@ -48,6 +48,14 @@ interface Route {
   note: string;
 }
 
+interface Liquidity {
+  band: "low" | "moderate" | "high" | "severe";
+  reason: string;
+  destinationSharePct: number;
+  source: { chainKey: string; tokenBaseUnits: string; tokenSharePct: number; decimals: number };
+  destination: { chainKey: string; tokenBaseUnits: string; tokenSharePct: number; decimals: number };
+}
+
 interface Amount {
   amountBaseUnits: string;
   asset: { decimals: number; symbol: string };
@@ -171,6 +179,7 @@ function Bridge({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [donation, setDonation] = useState<{ hash: string } | null>(null);
+  const [liquidity, setLiquidity] = useState<Liquidity | null>(null);
   const persisted = useRef<PersistedRailFlow | null>(readPersisted());
 
   const flow = useRailFlow(client, { persisted: persisted.current });
@@ -189,6 +198,33 @@ function Bridge({
   }, [flow, flow.snapshot.phase]);
 
   const route = routes.find((candidate) => candidate.id === routeId) ?? null;
+
+  /*
+   * Pool depth only exists for the pool-based alternative to this route, so it
+   * is fetched only there. CCTP and OFT routes have no pool, and showing a
+   * liquidity score for them would invent a risk that does not exist.
+   */
+  const poolRouteSymbol = route?.id === "usdt0-tron" ? route.token.symbol : null;
+  const poolAmountUnits =
+    poolRouteSymbol && route ? toBaseUnits(amount, route.token.decimals) : null;
+  useEffect(() => {
+    if (!poolRouteSymbol || !poolAmountUnits) {
+      setLiquidity(null);
+      return;
+    }
+    let live = true;
+    const timer = setTimeout(() => {
+      fetch(`/api/liquidity?symbol=${poolRouteSymbol}&amount=${poolAmountUnits}`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body) => live && setLiquidity(body && !body.error ? body : null))
+        .catch(() => live && setLiquidity(null));
+    }, 350);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [poolRouteSymbol, poolAmountUnits]);
+
   const destinationValid = isSolanaAddress(destination);
   const snapshot = flow.snapshot;
   const selected = flow.selectedQuote;
@@ -394,6 +430,39 @@ function Bridge({
           </p>
         ) : null}
       </section>
+
+      {liquidity ? (
+        <section className={`card pool pool-${liquidity.band}`}>
+          <div className="card-head">
+            <span>Alternative route liquidity</span>
+            <small className={`band band-${liquidity.band}`}>{liquidity.band} risk</small>
+          </div>
+          <div className="pool-body">
+            <p className="pool-reason">{liquidity.reason}</p>
+            <div className="pool-bars">
+              {[liquidity.source, liquidity.destination].map((side, index) => (
+                <div key={side.chainKey}>
+                  <span>
+                    {index === 0 ? "Sending into" : "Paying out from"} {side.chainKey}
+                  </span>
+                  <strong>
+                    {Math.round(Number(side.tokenBaseUnits) / 10 ** side.decimals).toLocaleString()}{" "}
+                    {route?.token.symbol}
+                  </strong>
+                  <i aria-hidden="true">
+                    <b style={{ width: `${Math.min(100, side.tokenSharePct * 2)}%` }} />
+                  </i>
+                  <small>{side.tokenSharePct.toFixed(0)}% of pool is {route?.token.symbol} (50% is balanced)</small>
+                </div>
+              ))}
+            </div>
+            <p className="pool-note">
+              This is a pooled route, so your money leaves a pot on the other side rather than being
+              minted. The smaller that pot, the worse your rate.
+            </p>
+          </div>
+        </section>
+      ) : null}
 
       <button
         type="button"

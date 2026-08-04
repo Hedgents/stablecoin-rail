@@ -400,3 +400,31 @@ code {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ------------------------------------------------------- pool liquidity */
+
+.pool-body { padding: .9rem 1rem 1rem; }
+.pool-reason { margin: 0 0 .8rem; font-size: .9rem; }
+.pool-note { margin: .8rem 0 0; font-size: .82rem; color: var(--ink-faint); }
+.pool-bars { display: grid; gap: .7rem; }
+.pool-bars > div { display: grid; gap: .15rem; }
+.pool-bars span { font-size: .8rem; color: var(--ink-soft); }
+.pool-bars strong { font-size: 1.05rem; font-family: var(--display); font-variant-numeric: tabular-nums; }
+.pool-bars i { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.pool-bars i b { display: block; height: 100%; background: var(--brand); border-radius: 3px; }
+.pool-bars small { font-size: .76rem; color: var(--ink-faint); }
+
+.band {
+  padding: .12rem .5rem;
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: .74rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.band-low { background: var(--brand-wash); color: var(--brand-deep); }
+.band-moderate { background: #fdf5e6; color: #8a5a10; }
+.band-high { background: #fdeee2; color: #a2500f; }
+.band-severe { background: #fdeceb; color: var(--danger); }
+.pool-severe { border-color: #eec3bf; }
+.pool-severe .pool-bars i b, .pool-high .pool-bars i b { background: #c9721a; }

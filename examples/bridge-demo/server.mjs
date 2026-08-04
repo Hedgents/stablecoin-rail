@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { handle, routes, support, SIGNING_ENABLED } from "./rail-config.mjs";
+import { assessPool, handle, routes, support, SIGNING_ENABLED } from "./rail-config.mjs";
 
 /** Local development server. On Vercel the same config is served by /api. */
 
@@ -17,6 +17,24 @@ function json(response, status, body) {
 createServer((request, response) => {
   if (request.method === "GET" && request.url === "/api/routes") {
     return json(response, 200, { routes, support, signingEnabled: SIGNING_ENABLED });
+  }
+  if (request.method === "GET" && request.url?.startsWith("/api/liquidity")) {
+    const url = new URL(request.url, "http://localhost");
+    const amount = url.searchParams.get("amount") ?? "0";
+    if (!/^\d+$/.test(amount) || amount === "0") {
+      return json(response, 400, { error: "amount must be a positive base-unit integer" });
+    }
+    return assessPool({ symbol: url.searchParams.get("symbol") ?? "USDT", amountBaseUnits: amount })
+      .then((a) =>
+        json(response, 200, {
+          band: a.band,
+          reason: a.reason,
+          destinationSharePct: a.destinationSharePct,
+          source: { chainKey: a.source.chainKey, tokenBaseUnits: a.source.tokenBaseUnits.toString(), tokenSharePct: a.source.tokenSharePct, decimals: a.source.decimals },
+          destination: { chainKey: a.destination.chainKey, tokenBaseUnits: a.destination.tokenBaseUnits.toString(), tokenSharePct: a.destination.tokenSharePct, decimals: a.destination.decimals },
+        }),
+      )
+      .catch((cause) => json(response, 502, { error: cause?.message ?? "unavailable" }));
   }
   if (request.method !== "POST" || request.url !== "/api/rail") {
     return json(response, 404, { error: "Not found" });

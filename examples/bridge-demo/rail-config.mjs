@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createRailHandler } from "@hedgents/stablecoin-rail/remote";
+import { createAllbridgePoolReader } from "@hedgents/stablecoin-rail-allbridge";
 import {
   ARBITRUM_MAINNET,
   BASE_MAINNET,
@@ -233,6 +234,24 @@ const handle = createRailHandler({
     }
   },
 });
+
+/*
+ * Pool-liquidity assessment, exposed separately from the rail.
+ *
+ * Only pool-based routes have this risk, so it is not a rail concept: CCTP and
+ * OFT routes have no pool and inventing a score for them would be dishonest.
+ * The registry is public and needs no key.
+ */
+const poolReader = createAllbridgePoolReader();
+
+export async function assessPool({ symbol, amountBaseUnits }) {
+  return poolReader.assess({
+    sourceChainKey: "TRX",
+    destinationChainKey: "SOL",
+    symbol,
+    amountBaseUnits: BigInt(amountBaseUnits),
+  });
+}
 
 export { handle, routes, SIGNING_ENABLED };
 export const support = DONATION_ADDRESS
