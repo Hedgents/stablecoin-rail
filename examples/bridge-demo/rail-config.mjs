@@ -5,6 +5,7 @@ import {
   ARBITRUM_MAINNET,
   BASE_MAINNET,
   ETHEREUM_MAINNET,
+  MONAD_MAINNET,
   SOLANA_MAINNET,
   createCctpToSolana,
 } from "@hedgents/stablecoin-rail-cctp";
@@ -42,7 +43,7 @@ const routes = [];
 // ---------------------------------------------------------------- CCTP (USDC)
 
 const cctp = createCctpToSolana({
-  sources: [ETHEREUM_MAINNET, BASE_MAINNET, ARBITRUM_MAINNET],
+  sources: [ETHEREUM_MAINNET, BASE_MAINNET, ARBITRUM_MAINNET, MONAD_MAINNET],
   solana: SOLANA_MAINNET,
   rpcUrl: RPC_URL,
 });
@@ -52,6 +53,7 @@ for (const [label, chain] of [
   ["Ethereum", ETHEREUM_MAINNET],
   ["Base", BASE_MAINNET],
   ["Arbitrum", ARBITRUM_MAINNET],
+  ["Monad", MONAD_MAINNET],
 ]) {
   routes.push({
     id: `cctp-${chain.numericChainId}`,

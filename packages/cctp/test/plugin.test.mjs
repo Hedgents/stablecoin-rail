@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   BASE_MAINNET,
   ETHEREUM_MAINNET,
+  MONAD_MAINNET,
   SOLANA_MAINNET,
   createCctpToSolana,
 } from "../dist/index.js";
@@ -298,6 +299,16 @@ test("rejects a mis-checksummed configured address at construction", () => {
       }),
     /EIP-55/,
   );
+});
+
+test("Monad is configured as CCTP domain 15", () => {
+  assert.equal(MONAD_MAINNET.cctpDomain, 15);
+  assert.equal(MONAD_MAINNET.numericChainId, 143);
+  assert.equal(MONAD_MAINNET.chainId, "eip155:143");
+  assert.equal(MONAD_MAINNET.tokenMessengerV2, ETHEREUM_MAINNET.tokenMessengerV2);
+  // Circle's native USDC on Monad, EIP-55 checksummed. A bad checksum would be
+  // rejected at construction, which is the point of validating there.
+  assert.equal(MONAD_MAINNET.usdcAddress, "0x754704Bc059F8C67012fEd69BC8A327a5aafb603");
 });
 
 test("Base is configured and shares the TokenMessenger address", () => {

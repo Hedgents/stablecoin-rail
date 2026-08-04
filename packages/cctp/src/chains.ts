@@ -27,6 +27,19 @@ export const ARBITRUM_MAINNET: CctpSourceChain = Object.freeze({
   tokenMessengerV2: TOKEN_MESSENGER_V2,
 });
 
+/**
+ * Monad. Circle's docs list it as standard-transfer only, but the live fee
+ * endpoint returns a fast tier as well, and selectFeeTier falls back to the
+ * first tier if that ever stops being true. Protocol fee is currently zero.
+ */
+export const MONAD_MAINNET: CctpSourceChain = Object.freeze({
+  chainId: "eip155:143",
+  numericChainId: 143,
+  cctpDomain: 15,
+  usdcAddress: "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+  tokenMessengerV2: TOKEN_MESSENGER_V2,
+});
+
 export const SOLANA_MAINNET: CctpSolanaSettlement = Object.freeze({
   chainId: "solana:mainnet",
   usdcMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
