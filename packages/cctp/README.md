@@ -5,7 +5,7 @@ Circle CCTP V2 funding provider for the [Hedgents Stablecoin Rail](https://githu
 ## Install
 
 ```bash
-npm install @hedgents/stablecoin-rail-cctp
+npm install @hedgents/stablecoin-rail-cctp@alpha
 ```
 
 ## Use
@@ -51,11 +51,11 @@ Quoting reads Circle's live fee schedule and sets `minimumOutput = amount - (for
 
 This is the part worth reading before you trust it.
 
-Circle's message API tells you the burn has been **attested**. Attestation means the message is signed, **not** that USDC reached the user, and Circle exposes no destination-chain transaction identifier for a forwarded transfer. Reporting `completed` on attestation alone would tell the rail that funding had settled when it may not have.
+Circle's message API tells you when the burn has been **attested** and, for a forwarded CCTP V2 transfer, returns the destination `forwardTxHash`. Attestation alone is not delivery: the provider reads that exact Solana transaction, requires it to succeed and invoke a configured CCTP program, then measures the credit for the quoted owner and mint. Only that evidence produces `completed`.
 
-So this provider finds the delivery transaction itself. Once the burn is attested, it first checks that Circle's decoded message matches the quote's destination domain, amount, and mint recipient (a mismatch is affirmative disproof and fails the transfer). It then scans the recipient token account's recent transactions for one that succeeded, involves Circle's CCTP V2 programs, and credits the recipient wallet by at least the guaranteed minimum. Only that transaction completes the transfer, and it is reported as `destinationReference` with the measured credit as `received`.
+Before following the hash, the provider checks that Circle's decoded message matches the quote's destination domain, amount, and mint recipient. An invalid signature, a different program, a failed transaction, or a credit below the guaranteed minimum fails closed. The verified signature is reported as `destinationReference` and its measured credit as `received`.
 
-A raw balance-versus-baseline comparison was rejected deliberately: an unrelated deposit would satisfy it, and an unrelated spend would starve it forever. Attribution closes both. Two residual limitations are stated rather than hidden. First, two concurrent transfers of the same size to the same wallet can match the same delivery transaction, because Circle exposes nothing that ties a specific delivery to a specific burn; serialize same-wallet transfers at the host if that matters to you. Second, the scan reads the most recent `deliveryScanLimit` transactions (default 20) on the recipient token account; a recipient busy enough to push the delivery out of that window before a poll sees it stays `pending`, never falsely `completed`. Raise the limit for high-traffic recipients.
+A raw balance-versus-baseline comparison was rejected deliberately: an unrelated deposit would satisfy it, and an unrelated spend would starve it forever. A bounded recipient-account scan remains only for older or recorded Iris responses that omit `forwardTxHash`. On that compatibility path, concurrent same-size transfers can be ambiguous and a delivery pushed beyond `deliveryScanLimit` stays `pending`; current responses use the exact hash and have neither limitation.
 
 ## Not supported
 
@@ -63,7 +63,7 @@ A raw balance-versus-baseline comparison was rejected deliberately: an unrelated
 
 ## Status
 
-Alpha. **No CCTP route has completed a mainnet transfer.** Do not enable in production before a small-value proof and an independent security review.
+Alpha. **Ethereum USDC → Solana USDC has completed one small-value mainnet transfer, and the current exact-transaction verifier replays it successfully.** Other source chains remain unproven, and there has been no independent security review. Do not enable the package broadly in production before those gates are closed.
 
 ## Licence
 

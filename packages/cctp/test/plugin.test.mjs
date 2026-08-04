@@ -14,6 +14,7 @@ const RPC = "https://rpc.test";
 const API = "https://iris.test";
 const WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
 const TX = `0x${"ab".repeat(32)}`;
+const FORWARD_TX = "KwTk3nn76FWS1CtmtEHbVJsURJNLvBAdJ7jhGqqj2Mr8qHCHasVYrdeC3e4gnx1QELX1pJkUxUxK8s8JDpX3rqw";
 // deriveAssociatedTokenAddress(WALLET, USDC mint), pinned in the -solana suite.
 const EXPECTED_ATA = "FGETo8T8wMcN2wCjav8VK6eh3dLk63evNDPxzLSJra8B";
 
@@ -279,6 +280,99 @@ test("stays pending while attested but not yet delivered", async () => {
   // Attestation means signed, not delivered. The balance has not moved.
   assert.equal(status.state, "pending");
   assert.match(status.detail, /not delivered/);
+});
+
+test("uses Circle's forwardTxHash as the exact Solana settlement evidence", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [
+      {
+        status: "complete",
+        attestation: `0x${"cd".repeat(32)}`,
+        forwardState: "COMPLETE",
+        forwardTxHash: FORWARD_TX,
+      },
+    ],
+    // No getSignaturesForAddress fixture exists. Completion therefore proves
+    // the exact hash was read rather than rediscovered through an account scan.
+    transactions: { [FORWARD_TX]: solanaTx() },
+  });
+  const quote = await quoteOf(plugin);
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "completed");
+  assert.equal(status.destinationReference.txId, FORWARD_TX);
+  assert.equal(status.received.amountBaseUnits, "98790000");
+});
+
+test("keeps an exact forwarded transaction pending until Solana indexes it", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [
+      {
+        status: "complete",
+        attestation: `0x${"cd".repeat(32)}`,
+        forwardState: "COMPLETE",
+        forwardTxHash: FORWARD_TX,
+      },
+    ],
+  });
+  const quote = await quoteOf(plugin);
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "pending");
+});
+
+test("fails closed when Circle's exact forwarded transaction is not a CCTP delivery", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [
+      {
+        status: "complete",
+        attestation: `0x${"cd".repeat(32)}`,
+        forwardState: "COMPLETE",
+        forwardTxHash: FORWARD_TX,
+      },
+    ],
+    transactions: { [FORWARD_TX]: solanaTx({ program: SPL_TOKEN }) },
+  });
+  const quote = await quoteOf(plugin);
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "failed");
+  assert.match(status.detail, /configured CCTP program/);
+});
+
+test("rejects a malformed forwardTxHash instead of searching unrelated activity", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [
+      {
+        status: "complete",
+        attestation: `0x${"cd".repeat(32)}`,
+        forwardState: "COMPLETE",
+        forwardTxHash: "not-a-solana-signature",
+      },
+    ],
+  });
+  const quote = await quoteOf(plugin);
+  await assert.rejects(
+    () =>
+      plugin.getStatus(
+        { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+        context,
+      ),
+    (error) => {
+      assert.equal(error.code, "INVALID_FORWARD_TX_HASH");
+      return true;
+    },
+  );
 });
 
 test("completes only via an attributed CCTP delivery transaction, reporting the credit", async () => {

@@ -9,7 +9,11 @@ import {
   type TransactionReference,
   type WalletStep,
 } from "@hedgents/stablecoin-rail";
-import { deriveAssociatedTokenAddress, toBytes32 } from "@hedgents/stablecoin-rail-solana";
+import {
+  decodeBase58,
+  deriveAssociatedTokenAddress,
+  toBytes32,
+} from "@hedgents/stablecoin-rail-solana";
 import { assertChecksumAddress, encodeApprove, encodeDepositForBurnWithHook } from "./abi.js";
 import { protocolFee, selectFeeTier } from "./fees.js";
 import { buildSolanaForwardHook } from "./hook.js";
@@ -217,6 +221,76 @@ export function createCctpToSolana(options: CctpOptions) {
     submittedAt: string | null;
   }
 
+  type ExactDeliveryResult =
+    | { state: "pending" }
+    | { state: "failed"; detail: string }
+    | { state: "completed"; delivery: DeliveryCredit };
+
+  function isSolanaSignature(value: unknown): value is string {
+    if (typeof value !== "string") return false;
+    try {
+      return decodeBase58(value).length === 64;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Verify the exact Forwarding Service transaction returned by Circle.
+   *
+   * `forwardTxHash` binds the source burn to one destination transaction, so
+   * it is strictly stronger than searching recent recipient activity. The
+   * transaction still has to succeed, invoke a configured CCTP program, and
+   * credit this quote's owner and mint by at least the guaranteed minimum.
+   */
+  async function verifyExactDeliveryTransaction(
+    signature: string,
+    owner: string,
+    minimum: bigint,
+    signal?: AbortSignal,
+  ): Promise<ExactDeliveryResult> {
+    const tx = await rpcCall(
+      "getTransaction",
+      [signature, { encoding: "jsonParsed", commitment: "confirmed", maxSupportedTransactionVersion: 0 }],
+      signal,
+    );
+    if (tx.error) fail("RPC_UNAVAILABLE", "The Solana RPC failed the forwarded-transaction read.");
+    const result = tx.result;
+    if (!isRecord(result)) return { state: "pending" };
+    const meta = result.meta;
+    if (!isRecord(meta)) {
+      return { state: "failed", detail: "Circle's forwarded transaction has no readable metadata." };
+    }
+    if (meta.err) {
+      return { state: "failed", detail: "Circle's forwarded transaction failed on Solana." };
+    }
+    if (!accountKeysOf(result.transaction).some((key) => deliveryPrograms.has(key))) {
+      return {
+        state: "failed",
+        detail: "Circle's forwarded transaction does not invoke a configured CCTP program.",
+      };
+    }
+    const delta = ownerMintDelta(meta, owner, solana.usdcMint);
+    if (delta < minimum) {
+      return {
+        state: "failed",
+        detail: "Circle's forwarded transaction credited less USDC than the guaranteed minimum.",
+      };
+    }
+    const blockTime = result.blockTime;
+    return {
+      state: "completed",
+      delivery: {
+        signature,
+        receivedBaseUnits: delta,
+        submittedAt:
+          typeof blockTime === "number" && Number.isFinite(blockTime)
+            ? new Date(blockTime * 1_000).toISOString()
+            : null,
+      },
+    };
+  }
+
   /**
    * The transaction that actually delivered this transfer, or `null` while
    * none exists yet.
@@ -324,7 +398,7 @@ export function createCctpToSolana(options: CctpOptions) {
     manifest: {
       id: PLUGIN_ID,
       name: "Circle CCTP V2",
-      version: "0.1.0",
+      version: "0.1.3",
       apiVersion: 1,
       kind: "funding-provider",
       homepage: "https://developers.circle.com/cctp",
@@ -489,9 +563,8 @@ export function createCctpToSolana(options: CctpOptions) {
       const checkedAt = new Date(context.now()).toISOString();
       const base: Omit<FundingStatus, "state" | "detail"> = {
         reference,
-        // Circle's message API exposes no destination transaction identifier,
-        // so there is nothing honest to put here. Delivery is proven below by
-        // reading the destination account instead.
+        // Filled only after the destination transaction has been read and its
+        // exact owner, mint, program, and credit have been verified.
         destinationReference: null,
         received: null,
         checkedAt,
@@ -540,12 +613,34 @@ export function createCctpToSolana(options: CctpOptions) {
       if (typeof account !== "string" || typeof minimumRaw !== "string") {
         fail("INVALID_QUOTE_DATA", "The CCTP quote is missing its delivery data.");
       }
-      const delivery = await findDeliveryTransaction(
-        account,
-        intent.destination.account.address,
-        BigInt(minimumRaw),
-        context.signal,
-      );
+
+      const forwardTxHash = message?.forwardTxHash;
+      let delivery: DeliveryCredit | null = null;
+      if (forwardTxHash != null) {
+        if (!isSolanaSignature(forwardTxHash)) {
+          fail("INVALID_FORWARD_TX_HASH", "Circle returned an invalid Solana forwarding transaction signature.");
+        }
+        const exact = await verifyExactDeliveryTransaction(
+          forwardTxHash,
+          intent.destination.account.address,
+          BigInt(minimumRaw),
+          context.signal,
+        );
+        if (exact.state === "failed") {
+          return { ...base, state: "failed", detail: exact.detail };
+        }
+        if (exact.state === "completed") delivery = exact.delivery;
+      } else {
+        // Compatibility path for recorded or older Iris responses that omit
+        // forwardTxHash. Current CCTP V2 responses identify the exact Solana
+        // transaction, which always takes precedence over this bounded scan.
+        delivery = await findDeliveryTransaction(
+          account,
+          intent.destination.account.address,
+          BigInt(minimumRaw),
+          context.signal,
+        );
+      }
       if (!delivery) {
         return {
           ...base,

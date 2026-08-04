@@ -41,9 +41,10 @@ An internal adversarial audit (2026-08-04, thirty independent review passes with
 | Route | Ethereum USDC → Solana USDC, Circle CCTP V2 |
 | Sent | 5.000000 USDC |
 | Guaranteed | 4.875317 USDC |
-| Source transaction | `0x509ce416c0fd1908053e39221e1c1e157a4e52324514882296fbf194df5152f1` |
-| Circle attestation | `complete`, domain 0 → 5 |
-| Destination | `FtXSmydZCxEu78tr2sTcbSNByGPENZu7wNJNMhz1vP7B` |
+| Source transaction | [Ethereum burn `0x509c…52f1`](https://etherscan.io/tx/0x509ce416c0fd1908053e39221e1c1e157a4e52324514882296fbf194df5152f1) |
+| Circle attestation | [`complete`, domain 0 → 5](https://iris-api.circle.com/v2/messages/0?transactionHash=0x509ce416c0fd1908053e39221e1c1e157a4e52324514882296fbf194df5152f1) |
+| Solana delivery | [`KwTk…3rqw`](https://solscan.io/tx/KwTk3nn76FWS1CtmtEHbVJsURJNLvBAdJ7jhGqqj2Mr8qHCHasVYrdeC3e4gnx1QELX1pJkUxUxK8s8JDpX3rqw) |
+| Destination wallet | [`FtXS…1vP7B`](https://solscan.io/account/FtXSmydZCxEu78tr2sTcbSNByGPENZu7wNJNMhz1vP7B) |
 | Cost | 0.124183 forwarding, 0.000500 protocol |
 
 Independently verified after the fact against Circle's message API and the destination token account, not merely reported by the interface that performed it.
@@ -52,7 +53,7 @@ Independently verified after the fact against Circle's message API and the desti
 
 It proves the full path end to end: quote, exact-amount approval, `depositForBurnWithHook`, Circle's Forwarding Service delivering on Solana, and **completion detected on the destination chain** rather than by a provider claiming success.
 
-One honesty note: that transfer exercised the completion mechanism of its day, a balance-versus-baseline comparison. A subsequent audit showed that mechanism could be satisfied by an unrelated deposit and starved by an unrelated spend, so it has been replaced with attribution: completion now requires finding the specific CCTP-program transaction that credited the recipient, which is also reported as evidence with the measured amount. The replacement is fixture-tested but has not yet been exercised against a live mainnet delivery.
+One honesty note: the original transfer exercised the completion mechanism of its day, a balance-versus-baseline comparison. A subsequent audit showed that mechanism could be satisfied by an unrelated deposit and starved by an unrelated spend. It has been replaced with exact attribution: the provider follows Circle's `forwardTxHash`, reads that Solana transaction, requires a configured CCTP program, and measures the owner-and-mint credit. `npm run verify:cctp-proof` replayed the public transfer through that current code path and recovered the exact 4.875317 USDC delivery.
 
 It does not prove Base, Arbitrum, or Monad, which share the code path but have not been exercised. It does not prove the Mayan or LayerZero routes at all. It does not prove refund handling, and it does not prove resume across a genuine mid-transfer reload.
 
@@ -107,9 +108,10 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 ### Known limitations, stated rather than buried
 
 - **Settlement verification has now run against one real delivery**, on the Ethereum route. Every other route's verification is still exercised only against recorded fixtures.
-- **Circle exposes no destination-transaction identifier** for a forwarded transfer, so the CCTP route locates the delivery itself: it scans the recipient account for the CCTP-program transaction whose credit clears the guaranteed minimum, and reports that transaction and amount. The stated residual: two concurrent same-size transfers to the same wallet can match the same delivery transaction. Hosts that allow this should serialize them.
+- **Current Circle CCTP V2 responses expose `forwardTxHash`,** which the provider treats as the exact destination transaction and verifies independently on Solana. A bounded recipient-account scan remains only as a compatibility path for older or recorded responses that omit the field; the concurrent same-size ambiguity applies only to that fallback.
 - **Mayan completion is still a balance-versus-baseline check**, not an attributed delivery transaction. An unrelated deposit clearing the minimum between quote and delivery would satisfy it, and a spend from the account after quoting can delay it past the actual delivery. The CCTP route no longer has this property; the Mayan route does.
 - **Mayan reports amounts as JavaScript numbers**, so amounts far above ~1e9 units cannot be converted exactly. That is a limitation of an API that sends money as a float.
+- **The reference demo's optional Mayan SDK currently brings four moderate npm audit advisories** through `@solana/web3.js` → `jayson` → `uuid`; npm reports no fixed upstream release. No `@hedgents` package bundles that SDK—the host injects it—but the demo should not be deployed unchanged.
 - **A wallet approval lost before `markFundingSubmitted`** cannot be recovered by any SDK-side design. Hosts must persist the reference at submission time.
 - **The TRON contract allowlist is optional hardening**, not a precondition. A production deployment should configure one; USDT0 migrates Legacy Mesh contracts wholesale.
 
@@ -124,11 +126,13 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 
 ## Testing
 
-222 tests, no network I/O; every upstream response is a recorded fixture. Provider adapters are additionally checked against the shared conformance suite, so a plugin cannot pass on its own test doubles alone.
+226 tests, no network I/O; every upstream response is a recorded fixture. Provider adapters are additionally checked against the shared conformance suite, so a plugin cannot pass on its own test doubles alone.
 
 ```bash
 npm install && npm test
 ```
+
+The separate `npm run verify:cctp-proof` command performs a read-only live replay against Circle and Solana. It is intentionally not part of the deterministic unit suite.
 
 ### Verifying the published packages
 
