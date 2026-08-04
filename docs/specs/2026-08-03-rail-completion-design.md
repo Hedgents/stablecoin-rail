@@ -203,6 +203,8 @@ hydrateFlow(persisted: PersistedRailFlow): RailFlow;
 | `quoting`, `preparing-funding`, `preparing-action` | `idle` | An in-flight request cannot be resumed |
 | `awaiting-source-signature`, `awaiting-destination-signature` | `quote-ready` if fresh, else `idle` | The held wallet steps are stale |
 
+> **Superseded 2026-08-04.** The two rows above were an oversight for the post-settlement phases: `preparing-action` and `awaiting-destination-signature` are only reachable after funding settled, so degrading them past `destination-ready` erased the funding evidence and re-armed payment. They now restore as `destination-ready` with the funding record intact, and `preparing-funding` degrades to `quote-ready` while its quote is fresh. `docs/ARCHITECTURE.md` is the living description of the restore contract.
+
 Failure modes, all fail-closed:
 
 - `UNSUPPORTED_PERSISTED_VERSION` when `version !== 1`.

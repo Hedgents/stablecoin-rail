@@ -392,3 +392,59 @@ test("keeps a provider success pending until Solana delivery evidence is indexed
   assert.equal(status.state, "pending");
   assert.equal(status.destinationReference, null);
 });
+
+test("derives the TRON step kind from the call selector, not the description", async () => {
+  const envelope = (data, description) => ({
+    type: "TRANSACTION",
+    description,
+    chainKey: "tron",
+    chainType: "TRON",
+    signerAddress: SOURCE,
+    transaction: {
+      encoded: {
+        visible: false,
+        txID: "b".repeat(64),
+        raw_data: {
+          contract: [
+            {
+              type: "TriggerSmartContract",
+              parameter: {
+                value: {
+                  owner_address: OWNER_HEX,
+                  contract_address: "41a614f803b6fd780986a42c78ec9c7f77e6ded13c",
+                  call_value: 0,
+                  data,
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  });
+  const plugin = createLayerZeroUsdt0TronToSolana({
+    apiKey: "test-key",
+    validateTronTransaction: () => {},
+    fetch: async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/quotes")) return json(quoteResponse());
+      if (path.endsWith("/build-user-steps")) {
+        return json({
+          userSteps: [
+            // An approve call with no description: the old inference would
+            // have called it "funding" and no host would await its receipt.
+            envelope(`095ea7b3${"00".repeat(64)}`, undefined),
+            // A transfer call with a misleading "approval" description.
+            envelope("a9059cbb", "Approve the USDT0 transfer"),
+          ],
+        });
+      }
+      throw new Error(`Unexpected path ${path}`);
+    },
+  });
+  const draft = await plugin.quote(intent, { now: () => NOW });
+  const quote = { ...draft, providerId: plugin.manifest.id, providerName: plugin.manifest.name };
+  const steps = await plugin.prepare({ intent, quote }, { now: () => NOW });
+  assert.deepEqual(steps.map((step) => step.kind), ["approval", "funding"]);
+  assert.match(steps[0].description, /No USDT moves in this step/);
+});

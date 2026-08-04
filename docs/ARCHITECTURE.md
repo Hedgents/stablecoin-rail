@@ -68,6 +68,7 @@ Ranking adapts: with an action, routes are ranked by the action's guaranteed out
 Restoration is not symmetric with serialization, deliberately:
 
 - Phases holding a real on-chain reference (`funding-pending`, `action-pending`) or a decided outcome restore as they were.
+- Phases reached only after funding settled (`preparing-action`, `awaiting-destination-signature`) fall back to `destination-ready`, keeping the funding reference and status. The funding evidence is the record that real money already moved; rewinding past it would invite a second payment. A snapshot claiming one of these phases without funding evidence is refused as corrupt.
 - Phases holding only a quote fall back to `quote-ready` while that quote is fresh, and to `idle` once it is not.
 - **Unsigned wallet steps are always dropped.** They carry stale Solana blockhashes and TRON reference blocks, and re-presenting one for signature is precisely the bug this feature would otherwise introduce. Prepare again after hydrating.
 - An unknown version, a malformed snapshot, or a plugin that is no longer registered fails closed.

@@ -23,6 +23,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
@@ -30,7 +31,7 @@
     "react": ">=18.3.1"
   },
   "devDependencies": {
-    "@hedgents/stablecoin-rail": "0.2.0"
+    "@hedgents/stablecoin-rail": "^0.2.1"
   },
   "engines": {
     "node": ">=20"

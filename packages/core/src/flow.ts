@@ -66,6 +66,32 @@ const INITIAL: RailFlowSnapshot = Object.freeze({
 
 export const INITIAL_SNAPSHOT: RailFlowSnapshot = INITIAL;
 
+/**
+ * Phases where a new quote would erase the only record of an in-flight
+ * transfer or a settled-but-unconsumed funding leg. Terminal phases
+ * (completed, refunded, failed) hold a decided outcome and stay re-quotable;
+ * for the blocked phases, `reset()` is the deliberate escape hatch and
+ * `quote()` must not double as an implicit one.
+ */
+const QUOTE_BLOCKED_PHASES = new Set<RailFlowPhase>([
+  "funding-pending",
+  "destination-ready",
+  "preparing-action",
+  "awaiting-destination-signature",
+  "action-pending",
+]);
+
+/**
+ * Verification hard-stops that must terminally fail the flow even though they
+ * surface during a status poll. Anything else a poll throws is transport
+ * trouble: the transfer itself is unaffected, so the phase survives to be
+ * polled again and only `snapshot.error` records the hiccup.
+ */
+const TERMINAL_REFRESH_CODES = new Set([
+  "SETTLEMENT_BELOW_MINIMUM",
+  "SETTLEMENT_ASSET_MISMATCH",
+]);
+
 export class RailFlow {
   private snapshot: RailFlowSnapshot = INITIAL;
   private readonly listeners = new Set<Listener>();
@@ -106,6 +132,12 @@ export class RailFlow {
   }
 
   async quote(intent: FundingIntent) {
+    if (QUOTE_BLOCKED_PHASES.has(this.snapshot.phase)) {
+      throw new RailError(
+        "INVALID_FLOW_PHASE",
+        "A new quote would erase the record of an in-flight transfer. Call reset() first to abandon it deliberately.",
+      );
+    }
     const operation = this.beginOperation();
     this.update({
       phase: "quoting",
@@ -208,7 +240,7 @@ export class RailFlow {
       });
       return this.snapshot;
     } catch (error) {
-      return this.failOperation(operation.id, error);
+      return this.failRefresh(operation.id, error);
     }
   }
 
@@ -271,7 +303,7 @@ export class RailFlow {
       });
       return this.snapshot;
     } catch (error) {
-      return this.failOperation(operation.id, error);
+      return this.failRefresh(operation.id, error);
     }
   }
 
@@ -352,6 +384,22 @@ export class RailFlow {
     if (!this.isCurrent(operation)) return this.snapshot;
     const detail = errorDetails(error);
     this.update({ phase: "failed", error: detail });
+    return this.snapshot;
+  }
+
+  /**
+   * A status poll is read-only and retryable: funds are already in flight, so
+   * a transient upstream error must not brick the machine. Only affirmative
+   * verification failures are allowed to terminate the flow from here.
+   */
+  private failRefresh(operation: number, error: unknown) {
+    if (!this.isCurrent(operation)) return this.snapshot;
+    const detail = errorDetails(error);
+    if (TERMINAL_REFRESH_CODES.has(detail.code)) {
+      this.update({ phase: "failed", error: detail });
+    } else {
+      this.update({ error: detail });
+    }
     return this.snapshot;
   }
 

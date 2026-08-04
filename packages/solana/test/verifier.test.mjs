@@ -154,3 +154,57 @@ test("returns null on a non-OK RPC response", async () => {
   });
   assert.equal(await verifier.verify(request(), context), null);
 });
+
+test("sums a delivery split across two accounts of the same owner and mint", async () => {
+  const meta = {
+    err: null,
+    preTokenBalances: [
+      { accountIndex: 3, mint: MINT, owner: OWNER, programId: SPL, uiTokenAmount: { amount: "1000000" } },
+    ],
+    postTokenBalances: [
+      // Account order inside the message is relayer-controlled; neither entry
+      // alone clears the 99 USDC minimum, but the owner's total delta does.
+      { accountIndex: 3, mint: MINT, owner: OWNER, programId: SPL, uiTokenAmount: { amount: "61000000" } },
+      { accountIndex: 5, mint: MINT, owner: OWNER, programId: SPL, uiTokenAmount: { amount: "39500000" } },
+    ],
+  };
+  const verifier = createSolanaSettlementVerifier({
+    rpcUrl: "https://rpc.test",
+    fetch: rpc({ meta }),
+  });
+  const received = await verifier.verify(request(), context);
+  assert.equal(received.amountBaseUnits, "99500000");
+});
+
+test("a pre-existing account missing from postTokenBalances counts against the delta", async () => {
+  const meta = {
+    err: null,
+    preTokenBalances: [
+      { accountIndex: 4, mint: MINT, owner: OWNER, programId: SPL, uiTokenAmount: { amount: "50000000" } },
+    ],
+    postTokenBalances: [
+      { accountIndex: 3, mint: MINT, owner: OWNER, programId: SPL, uiTokenAmount: { amount: "40000000" } },
+    ],
+  };
+  const verifier = createSolanaSettlementVerifier({
+    rpcUrl: "https://rpc.test",
+    fetch: rpc({ meta }),
+  });
+  // Net owner delta is negative, which is not a delivery.
+  assert.equal(await verifier.verify(request(), context), null);
+});
+
+test("entries owned by an unexpected token program are excluded from both sides", async () => {
+  const meta = {
+    err: null,
+    preTokenBalances: [],
+    postTokenBalances: [
+      { accountIndex: 3, mint: MINT, owner: OWNER, programId: TOKEN_2022_PROGRAM_ID, uiTokenAmount: { amount: "99500000" } },
+    ],
+  };
+  const verifier = createSolanaSettlementVerifier({
+    rpcUrl: "https://rpc.test",
+    fetch: rpc({ meta }),
+  });
+  assert.equal(await verifier.verify(request(), context), null);
+});

@@ -32,6 +32,8 @@ A bridge aggregator's job ends when tokens land. This ranks the **guaranteed fin
 
 **Ethereum USDC to Solana USDC has completed a real mainnet transfer.** Everything else remains unproven, and there has been no independent security review.
 
+An internal adversarial audit (2026-08-04, thirty independent review passes with every finding attacked by a separate verifier) confirmed 12 real defects: one critical (crash-recovery could erase a settled transfer's record and invite a double payment), four high (a provider self-report below the guaranteed minimum bypassed verification; a transient RPC or status-API error terminally failed in-flight flows; an RPC error at quote time zeroed the delivery baseline; balance-delta completion was not attributable to the transfer). All 12 are fixed with regression tests. Internal is not independent; the review in the list below still stands open.
+
 ### The proof
 
 | | |
@@ -48,7 +50,9 @@ Independently verified after the fact against Circle's message API and the desti
 
 ### What that transfer does and does not prove
 
-It proves the full path end to end: quote, exact-amount approval, `depositForBurnWithHook`, Circle's Forwarding Service delivering on Solana, and **completion detected by the destination balance actually moving** rather than by a provider claiming success. That last mechanism existed because Circle exposes no destination-transaction identifier, and it had never run against a real delivery until now.
+It proves the full path end to end: quote, exact-amount approval, `depositForBurnWithHook`, Circle's Forwarding Service delivering on Solana, and **completion detected on the destination chain** rather than by a provider claiming success.
+
+One honesty note: that transfer exercised the completion mechanism of its day, a balance-versus-baseline comparison. A subsequent audit showed that mechanism could be satisfied by an unrelated deposit and starved by an unrelated spend, so it has been replaced with attribution: completion now requires finding the specific CCTP-program transaction that credited the recipient, which is also reported as evidence with the measured amount. The replacement is fixture-tested but has not yet been exercised against a live mainnet delivery.
 
 It does not prove Base, Arbitrum, or Monad, which share the code path but have not been exercised. It does not prove the Mayan or LayerZero routes at all. It does not prove refund handling, and it does not prove resume across a genuine mid-transfer reload.
 
@@ -86,8 +90,9 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 
 - Funding-only intents, so the rail can be adopted purely to land a stablecoin in a wallet
 - Route ranking by guaranteed output across providers
-- Resume across a page reload, with unsigned wallet steps deliberately discarded rather than restored
-- Settlement verification that stops a flow when less arrives than was guaranteed
+- Resume across a page reload, with unsigned wallet steps deliberately discarded rather than restored, and settled-funding evidence preserved so a crash after settlement can never re-arm payment
+- Settlement verification that stops a flow when less arrives than was guaranteed, applied equally to provider self-reports
+- Transient RPC or status-API failures during polling surface as retryable errors instead of terminally failing a flow whose funds are in flight
 - A remote transport keeping provider credentials server-side, proven contract-preserving by running the same conformance suite through it
 - An executable plugin conformance suite that every shipped provider passes
 - Pool-depth and liquidity-risk assessment for pool-based routes
@@ -102,7 +107,8 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 ### Known limitations, stated rather than buried
 
 - **Settlement verification has now run against one real delivery**, on the Ethereum route. Every other route's verification is still exercised only against recorded fixtures.
-- **Circle exposes no destination-transaction identifier** for a forwarded transfer, so the CCTP route proves delivery by destination balance and cannot report an exact received amount.
+- **Circle exposes no destination-transaction identifier** for a forwarded transfer, so the CCTP route locates the delivery itself: it scans the recipient account for the CCTP-program transaction whose credit clears the guaranteed minimum, and reports that transaction and amount. The stated residual: two concurrent same-size transfers to the same wallet can match the same delivery transaction. Hosts that allow this should serialize them.
+- **Mayan completion is still a balance-versus-baseline check**, not an attributed delivery transaction. An unrelated deposit clearing the minimum between quote and delivery would satisfy it, and a spend from the account after quoting can delay it past the actual delivery. The CCTP route no longer has this property; the Mayan route does.
 - **Mayan reports amounts as JavaScript numbers**, so amounts far above ~1e9 units cannot be converted exactly. That is a limitation of an API that sends money as a float.
 - **A wallet approval lost before `markFundingSubmitted`** cannot be recovered by any SDK-side design. Hosts must persist the reference at submission time.
 - **The TRON contract allowlist is optional hardening**, not a precondition. A production deployment should configure one; USDT0 migrates Legacy Mesh contracts wholesale.
@@ -118,7 +124,7 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 
 ## Testing
 
-184 tests, no network I/O; every upstream response is a recorded fixture. Provider adapters are additionally checked against the shared conformance suite, so a plugin cannot pass on its own test doubles alone.
+222 tests, no network I/O; every upstream response is a recorded fixture. Provider adapters are additionally checked against the shared conformance suite, so a plugin cannot pass on its own test doubles alone.
 
 ```bash
 npm install && npm test

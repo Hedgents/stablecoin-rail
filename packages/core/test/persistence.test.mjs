@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { RailClient, defineFundingProvider } from "../dist/index.js";
+import { RailClient, defineDestinationAction, defineFundingProvider } from "../dist/index.js";
 
 const NOW = Date.parse("2026-08-03T12:00:00.000Z");
 const now = () => NOW;
@@ -168,4 +168,168 @@ test("an idle snapshot rehydrates as idle", async () => {
   const resumed = client.hydrateFlow(client.createFlow().serialize());
   assert.equal(resumed.getSnapshot().phase, "idle");
   assert.equal(resumed.getSnapshot().batch, null);
+});
+
+// Post-settlement phases: funding already settled on mainnet, so a restore
+// must keep the funding evidence and rewind no further than destination-ready.
+
+const outputAsset = {
+  chainId: "solana:mainnet",
+  assetId: "solana:mainnet/spl:metalMint11111111111111111111111111111111",
+  symbol: "METAL",
+  decimals: 6,
+};
+
+const actionIntent = {
+  ...fundingOnlyIntent,
+  id: "intent-with-action",
+  action: { pluginId: "jupiter", params: {} },
+};
+
+const jupiter = defineDestinationAction({
+  manifest: {
+    id: "jupiter",
+    name: "Jupiter",
+    version: "1.0.0",
+    apiVersion: 1,
+    kind: "destination-action",
+  },
+  supports: () => true,
+  quote: async ({ fundingQuote }) => ({
+    id: `jupiter-${fundingQuote.providerId}`,
+    input: fundingQuote.minimumOutput,
+    expectedOutput: { asset: outputAsset, amountBaseUnits: fundingQuote.minimumOutput.amountBaseUnits },
+    minimumOutput: {
+      asset: outputAsset,
+      amountBaseUnits: (BigInt(fundingQuote.minimumOutput.amountBaseUnits) - 100n).toString(),
+    },
+    fees: [],
+    expiresAt,
+  }),
+  prepare: async () => [
+    {
+      id: "jupiter-swap",
+      kind: "destination-action",
+      chainId: "solana:mainnet",
+      label: "Buy the asset",
+      request: { namespace: "solana", chainId: "solana:mainnet", transactionBase64: "AQ==" },
+    },
+  ],
+});
+
+function actionClient() {
+  return new RailClient({
+    fundingProviders: [provider("a", "99000000")],
+    destinationActions: [jupiter],
+    now,
+  });
+}
+
+async function settledActionFlow(client) {
+  const flow = client.createFlow();
+  await flow.quote(actionIntent);
+  await flow.prepareFunding();
+  flow.markFundingSubmitted({ chainId: "eip155:1", txId: "0xabc", submittedAt: checkedAt });
+  await flow.refreshFunding();
+  await flow.prepareAction();
+  return flow;
+}
+
+test("awaiting-destination-signature restores as destination-ready with funding evidence intact", async () => {
+  const client = actionClient();
+  const flow = await settledActionFlow(client);
+  assert.equal(flow.getSnapshot().phase, "awaiting-destination-signature");
+
+  const resumed = client.hydrateFlow(flow.serialize());
+  const snapshot = resumed.getSnapshot();
+  assert.equal(snapshot.phase, "destination-ready");
+  assert.equal(snapshot.fundingReference.txId, "0xabc");
+  assert.equal(snapshot.fundingStatus.state, "completed");
+  assert.deepEqual(snapshot.actionSteps, []);
+
+  // The settled transfer must not be payable again...
+  await assert.rejects(
+    () => resumed.prepareFunding(),
+    (error) => {
+      assert.equal(error.code, "INVALID_FLOW_PHASE");
+      return true;
+    },
+  );
+  // ...while the unsigned action leg is simply prepared again.
+  const prepared = await resumed.prepareAction();
+  assert.equal(prepared.phase, "awaiting-destination-signature");
+});
+
+test("preparing-action restores as destination-ready, not idle", async () => {
+  const client = actionClient();
+  const flow = await settledActionFlow(client);
+  const persisted = flow.serialize();
+  persisted.snapshot = { ...persisted.snapshot, phase: "preparing-action" };
+
+  const snapshot = client.hydrateFlow(persisted).getSnapshot();
+  assert.equal(snapshot.phase, "destination-ready");
+  assert.equal(snapshot.fundingReference.txId, "0xabc");
+});
+
+test("a failed quote() serializes and rehydrates as a fresh flow instead of being refused", async () => {
+  const failing = defineFundingProvider({
+    manifest: { id: "a", name: "A", version: "1.0.0", apiVersion: 1, kind: "funding-provider" },
+    supports: () => true,
+    quote: async () => {
+      throw new Error("upstream down");
+    },
+    prepare: async () => [],
+    getStatus: async () => {
+      throw new Error("unused");
+    },
+  });
+  const client = new RailClient({ fundingProviders: [failing], now });
+  const flow = client.createFlow();
+  await flow.quote(fundingOnlyIntent);
+  assert.equal(flow.getSnapshot().phase, "failed");
+  assert.equal(flow.getSnapshot().batch, null);
+
+  // A host persisting on every revision must be able to rehydrate this.
+  const resumed = client.hydrateFlow(flow.serialize());
+  assert.equal(resumed.getSnapshot().phase, "idle");
+});
+
+test("a no-quote snapshot claiming funding evidence is refused as corrupt", async () => {
+  const client = new RailClient({ fundingProviders: [provider("a", "99000000")], now });
+  const flow = await fundedFlow(client);
+  const persisted = flow.serialize();
+  persisted.snapshot = { ...persisted.snapshot, batch: null, selectedQuoteId: null };
+  assert.throws(
+    () => client.hydrateFlow(persisted),
+    (error) => {
+      assert.equal(error.code, "INVALID_PERSISTED_SNAPSHOT");
+      return true;
+    },
+  );
+});
+
+test("preparing-funding degrades to quote-ready while the quote is fresh", async () => {
+  const client = new RailClient({ fundingProviders: [provider("a", "99000000")], now });
+  const flow = client.createFlow();
+  await flow.quote(fundingOnlyIntent);
+  const persisted = flow.serialize();
+  persisted.snapshot = { ...persisted.snapshot, phase: "preparing-funding" };
+  const snapshot = client.hydrateFlow(persisted).getSnapshot();
+  assert.equal(snapshot.phase, "quote-ready");
+  assert.ok(snapshot.batch);
+});
+
+test("a post-settlement snapshot without funding evidence is refused", async () => {
+  const client = actionClient();
+  const flow = await settledActionFlow(client);
+  const persisted = flow.serialize();
+  persisted.snapshot = { ...persisted.snapshot, fundingReference: null };
+
+  assert.throws(
+    () => client.hydrateFlow(persisted),
+    (error) => {
+      assert.equal(error.code, "INVALID_PERSISTED_SNAPSHOT");
+      return true;
+    },
+  );
 });

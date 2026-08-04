@@ -265,6 +265,22 @@ export class RailClient {
     );
     validateFundingStatus(status, reference, quote.intent.destination.settlementAsset);
 
+    // A provider's own settled amount gets the same floor as an independently
+    // verified one. The provider is exactly the party this invariant exists to
+    // double-check, so a self-report below the guaranteed minimum must not
+    // slide through the verifier-skip gate below.
+    if (
+      status.state === "completed" &&
+      status.received &&
+      parseAmount(status.received.amountBaseUnits) <
+        parseAmount(quote.funding.minimumOutput.amountBaseUnits)
+    ) {
+      throw new RailError(
+        "SETTLEMENT_BELOW_MINIMUM",
+        "The provider reported a settled amount below the guaranteed minimum output.",
+      );
+    }
+
     // Verify only what the provider left unproven: a settled transfer with
     // delivery evidence but no stated amount.
     if (

@@ -57,7 +57,13 @@ export function floorToBaseUnits(value: number, decimals: number): bigint {
   }
   const text = value.toFixed(Math.min(decimals + 2, 20));
   const [whole = "0", fraction = ""] = text.split(".");
-  return BigInt(whole + fraction.slice(0, decimals).padEnd(decimals, "0"));
+  let units = BigInt(whole + fraction.slice(0, decimals).padEnd(decimals, "0"));
+  // toFixed rounds to nearest, and within ~5e-(decimals+2) below a base-unit
+  // boundary the carry propagates INTO the kept digits, yielding one unit MORE
+  // than the true floor. Claiming more than the protocol guarantees is the
+  // unsafe direction, so step back down whenever the result exceeds the input.
+  if (units > 0n && Number(units) / 10 ** decimals > value) units -= 1n;
+  return units;
 }
 
 export function createMayanBnbToSolana(options: MayanOptions) {
@@ -97,12 +103,34 @@ export function createMayanBnbToSolana(options: MayanOptions) {
     if (!response.ok) fail("RPC_UNAVAILABLE", `The Solana RPC returned ${response.status}.`);
     const payload: unknown = await response.json();
     if (!isRecord(payload)) fail("RPC_UNAVAILABLE", "The Solana RPC returned a malformed response.");
-    // A missing account answers with a JSON-RPC error, not a null result.
-    if (payload.error) return null;
+    // A missing account answers with JSON-RPC error -32602, not a null
+    // result. ONLY that error means "no account yet": transient node errors
+    // arrive over HTTP 200 in the same envelope, and mistaking one for a
+    // missing account would zero the delivery baseline for a funded account.
+    if (payload.error) {
+      const error = payload.error;
+      if (
+        isRecord(error) &&
+        error.code === -32602 &&
+        typeof error.message === "string" &&
+        /could not find account/i.test(error.message)
+      ) {
+        return null;
+      }
+      const message = isRecord(error) && typeof error.message === "string" ? error.message : "an unspecified error";
+      fail("RPC_UNAVAILABLE", `The Solana RPC failed the balance read: ${message}.`);
+    }
+    // A success payload without a readable amount is ambiguous, and ambiguity
+    // must not read as an empty account.
     const result = payload.result;
-    if (!isRecord(result) || !isRecord(result.value)) return null;
+    if (!isRecord(result) || !isRecord(result.value)) {
+      fail("RPC_UNAVAILABLE", "The Solana RPC returned a balance without a value.");
+    }
     const amount = result.value.amount;
-    return typeof amount === "string" && INTEGER.test(amount) ? BigInt(amount) : null;
+    if (typeof amount !== "string" || !INTEGER.test(amount)) {
+      fail("RPC_UNAVAILABLE", "The Solana RPC returned an unreadable balance amount.");
+    }
+    return BigInt(amount);
   }
 
   function chooseQuote(quotes: MayanQuote[], intent: FundingIntent): MayanQuote | null {

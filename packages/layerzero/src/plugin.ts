@@ -11,6 +11,7 @@ import {
 } from "@hedgents/stablecoin-rail";
 import {
   amount,
+  assertApprovalOrdering,
   chooseQuote,
   destinationReference,
   etaSeconds,
@@ -19,6 +20,7 @@ import {
   QUOTE_ID,
   sameAsset,
   SOLANA_ADDRESS,
+  stepKindFromCallData,
   TRON_ADDRESS,
 } from "./shared.js";
 import {
@@ -128,6 +130,25 @@ function jsonRecord(value: unknown) {
 
 function zeroValue(value: unknown) {
   return value === undefined || value === 0 || value === "0";
+}
+
+/**
+ * A TRON envelope's kind, derived from the function selectors its contract
+ * calls actually carry. An envelope is an approval only when EVERY call is an
+ * ERC-20 `approve`; anything else moves value and must be treated as the
+ * funding step so a host waits for approvals before broadcasting it.
+ */
+function tronStepKind(transaction: { [key: string]: JsonValue }): "approval" | "funding" {
+  const rawData = transaction.raw_data;
+  const calls = isRecord(rawData) && Array.isArray(rawData.contract) ? rawData.contract : [];
+  const selectors = calls.map((call) => {
+    const value = isRecord(call) && isRecord(call.parameter) ? call.parameter.value : null;
+    const data = isRecord(value) && typeof value.data === "string" ? value.data : "";
+    return stepKindFromCallData(data);
+  });
+  return selectors.length > 0 && selectors.every((kind) => kind === "approval")
+    ? "approval"
+    : "funding";
 }
 
 function assertUnsignedTronEnvelope(transaction: { [key: string]: JsonValue }) {
@@ -262,8 +283,8 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
           "LayerZero returned no wallet steps.",
         );
       }
-      return Promise.all(
-        upstreamSteps.map(async (step, index) => {
+      const steps = await Promise.all(
+        upstreamSteps.map(async (step, index): Promise<WalletStep> => {
           if (step.type !== "TRANSACTION") {
             throw new RailPluginError(
               PLUGIN_ID,
@@ -312,14 +333,19 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
               transaction,
             });
           }
+          // Kind comes from the contract calls' selectors, never from the
+          // optional upstream display text.
+          const kind = tronStepKind(transaction);
+          const summary =
+            kind === "approval"
+              ? "Allowance for the USDT0 bridge contract. No USDT moves in this step."
+              : "Move canonical USDT from TRON to canonical USDT on Solana.";
           return {
             id: `layerzero-tron-${index + 1}`,
-            kind: /approv/i.test(description) ? "approval" : "funding",
+            kind,
             chainId: TRON_MAINNET_CHAIN_ID,
             label: description,
-            description: targets.length
-              ? `Move canonical USDT from TRON to canonical USDT on Solana. Calls ${targets.join(", ")}.`
-              : "Move canonical USDT from TRON to canonical USDT on Solana.",
+            description: targets.length ? `${summary} Calls ${targets.join(", ")}.` : summary,
             request: {
               namespace: "tron",
               chainId: TRON_MAINNET_CHAIN_ID,
@@ -329,6 +355,8 @@ export function createLayerZeroUsdt0TronToSolana(options: LayerZeroTransferApiOp
           };
         }),
       );
+      assertApprovalOrdering(PLUGIN_ID, steps.map((step) => step.kind as "approval" | "funding"));
+      return steps;
     },
     getStatus: async ({ intent, quote, reference }, context) => {
       requirePinnedQuote(intent, quote);

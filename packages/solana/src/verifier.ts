@@ -91,17 +91,24 @@ export function createSolanaSettlementVerifier(
       const meta = payload.result.meta;
       if (!isRecord(meta) || meta.err) return null;
 
-      const post = balances(meta.postTokenBalances).find(
-        (entry) => entry.owner === owner && entry.mint === mint,
-      );
-      if (!post) return null;
-      // A mint served by an unexpected token program is not the asset we quoted.
-      if (typeof post.programId === "string" && post.programId !== expectedProgram) return null;
+      // A delivery may legitimately touch more than one token account of the
+      // same owner and mint (an ATA plus an auxiliary account). Measuring only
+      // the first match would make the verified amount depend on account
+      // ordering inside the transaction, which the relayer controls, so the
+      // owner's TOTAL delta across every matching account is measured instead.
+      // A mint served by an unexpected token program is not the asset we
+      // quoted, and its entries are excluded from both sides of the delta.
+      const matches = (entry: TokenBalance) =>
+        entry.owner === owner &&
+        entry.mint === mint &&
+        (typeof entry.programId !== "string" || entry.programId === expectedProgram);
+      const postMatches = balances(meta.postTokenBalances).filter(matches);
+      const preMatches = balances(meta.preTokenBalances).filter(matches);
+      if (postMatches.length === 0 && preMatches.length === 0) return null;
 
-      const pre = balances(meta.preTokenBalances).find(
-        (entry) => entry.accountIndex === post.accountIndex && entry.mint === mint,
-      );
-      const delta = amountOf(post) - amountOf(pre);
+      const postTotal = postMatches.reduce((sum, entry) => sum + amountOf(entry), 0n);
+      const preTotal = preMatches.reduce((sum, entry) => sum + amountOf(entry), 0n);
+      const delta = postTotal - preTotal;
       if (delta <= 0n) return null;
 
       return { asset: settlementAsset, amountBaseUnits: delta.toString() };

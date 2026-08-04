@@ -59,10 +59,34 @@ function json(value, status = 200) {
   });
 }
 
+const TOKEN_MESSENGER_MINTER = "CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe";
+const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+/** A jsonParsed-shaped Solana transaction crediting the destination wallet. */
+function solanaTx({ pre = "5000000", post = "103790000", program = TOKEN_MESSENGER_MINTER, err = null, owner = WALLET } = {}) {
+  return {
+    blockTime: 1_754_222_400,
+    meta: {
+      err,
+      preTokenBalances:
+        pre === null
+          ? []
+          : [{ accountIndex: 3, mint: SOLANA_MAINNET.usdcMint, owner, uiTokenAmount: { amount: pre } }],
+      postTokenBalances: [
+        { accountIndex: 3, mint: SOLANA_MAINNET.usdcMint, owner, uiTokenAmount: { amount: post } },
+      ],
+    },
+    transaction: { message: { accountKeys: [{ pubkey: owner }, { pubkey: program }] } },
+  };
+}
+
 /**
- * @param opts.balance      null to simulate a missing token account
- * @param opts.messages     Circle status payload, or 404 when undefined
- * @param opts.calls        collects request URLs
+ * @param opts.balance       null to simulate a missing token account
+ * @param opts.balanceError  a JSON-RPC error object returned for the balance read
+ * @param opts.messages      Circle status payload, or 404 when undefined
+ * @param opts.signatures    getSignaturesForAddress result for the delivery scan
+ * @param opts.transactions  getTransaction results keyed by signature
+ * @param opts.calls         collects request URLs
  */
 function client(opts = {}) {
   const calls = opts.calls ?? [];
@@ -76,14 +100,23 @@ function client(opts = {}) {
       calls.push(url);
       if (url === RPC) {
         const body = JSON.parse(init.body);
-        assert.equal(body.method, "getTokenAccountBalance");
-        return "balance" in opts && opts.balance === null
-          ? json({ jsonrpc: "2.0", id: 1, error: { code: -32602, message: "could not find account" } })
-          : json({
-              jsonrpc: "2.0",
-              id: 1,
-              result: { value: { amount: String(opts.balance ?? 0), decimals: 6 } },
-            });
+        if (body.method === "getTokenAccountBalance") {
+          if (opts.balanceError) return json({ jsonrpc: "2.0", id: 1, error: opts.balanceError });
+          return "balance" in opts && opts.balance === null
+            ? json({ jsonrpc: "2.0", id: 1, error: { code: -32602, message: "could not find account" } })
+            : json({
+                jsonrpc: "2.0",
+                id: 1,
+                result: { value: { amount: String(opts.balance ?? 0), decimals: 6 } },
+              });
+        }
+        if (body.method === "getSignaturesForAddress") {
+          return json({ jsonrpc: "2.0", id: 1, result: opts.signatures ?? [] });
+        }
+        if (body.method === "getTransaction") {
+          return json({ jsonrpc: "2.0", id: 1, result: (opts.transactions ?? {})[body.params[0]] ?? null });
+        }
+        throw new Error(`unexpected rpc method ${body.method}`);
       }
       if (url.includes("/v2/burn/")) return json(opts.schedule ?? SCHEDULE);
       if (url.includes("/v2/messages/")) {
@@ -248,29 +281,151 @@ test("stays pending while attested but not yet delivered", async () => {
   assert.match(status.detail, /not delivered/);
 });
 
-test("completes only once the destination balance has actually increased", async () => {
-  let balance = 5_000_000;
-  const plugin = createCctpToSolana({
-    sources: [ETHEREUM_MAINNET],
-    solana: SOLANA_MAINNET,
-    rpcUrl: RPC,
-    apiBaseUrl: API,
-    fetch: async (input) => {
-      const url = String(input);
-      if (url === RPC) {
-        return json({ jsonrpc: "2.0", id: 1, result: { value: { amount: String(balance), decimals: 6 } } });
-      }
-      if (url.includes("/v2/burn/")) return json(SCHEDULE);
-      return json({ messages: [{ status: "complete", attestation: `0x${"cd".repeat(32)}` }] });
+test("completes only via an attributed CCTP delivery transaction, reporting the credit", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [{ status: "complete", attestation: `0x${"cd".repeat(32)}` }],
+    signatures: [
+      { signature: "unrelatedsig", err: null },
+      { signature: "deliverysig", err: null },
+    ],
+    transactions: {
+      // An unrelated deposit of the same size does not involve the CCTP
+      // programs, so it must not complete this transfer.
+      unrelatedsig: solanaTx({ program: SPL_TOKEN }),
+      deliverysig: solanaTx(), // credits exactly the guaranteed minimum
     },
   });
   const quote = await quoteOf(plugin);
-  balance = 5_000_000 + 98_790_000; // exactly the guaranteed minimum
   const status = await plugin.getStatus(
     { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
     context,
   );
   assert.equal(status.state, "completed");
+  assert.equal(status.destinationReference.chainId, SOLANA_MAINNET.chainId);
+  assert.equal(status.destinationReference.txId, "deliverysig");
+  assert.equal(status.received.amountBaseUnits, "98790000");
+});
+
+test("an unrelated deposit clearing the minimum does not complete the transfer", async () => {
+  const opts = {
+    balance: 5_000_000,
+    messages: [{ status: "complete", attestation: `0x${"cd".repeat(32)}` }],
+    signatures: [{ signature: "unrelatedsig", err: null }],
+    transactions: { unrelatedsig: solanaTx({ program: SPL_TOKEN }) },
+  };
+  const plugin = client(opts);
+  const quote = await quoteOf(plugin);
+  // The unrelated deposit has landed: the raw account balance now clears the
+  // old balance-minus-baseline check, which is exactly the false completion
+  // this test discriminates against. Attribution must still say pending.
+  opts.balance = 200_000_000;
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "pending");
+});
+
+test("a spend after quoting cannot starve completion", async () => {
+  // The old baseline-delta check would have computed
+  // balance - baseline < minimum forever after a spend. Attribution reads the
+  // delivery transaction's own pre/post balances instead.
+  const plugin = client({
+    balance: 900_000_000, // large baseline at quote time
+    messages: [{ status: "complete", attestation: `0x${"cd".repeat(32)}` }],
+    signatures: [{ signature: "deliverysig", err: null }],
+    transactions: { deliverysig: solanaTx({ pre: "1000000", post: "99790000" }) },
+  });
+  const quote = await quoteOf(plugin);
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "completed");
+  assert.equal(status.received.amountBaseUnits, "98790000");
+});
+
+test("a failed or below-minimum candidate transaction does not complete the transfer", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [{ status: "complete", attestation: `0x${"cd".repeat(32)}` }],
+    signatures: [
+      { signature: "revertedsig", err: { InstructionError: [0, "Custom"] } },
+      { signature: "smallsig", err: null },
+    ],
+    transactions: {
+      revertedsig: solanaTx(),
+      smallsig: solanaTx({ pre: "0", post: "1000000" }), // another, smaller transfer's delivery
+    },
+  });
+  const quote = await quoteOf(plugin);
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "pending");
+});
+
+test("rejects an attested burn whose decoded message does not match the quote", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [
+      {
+        status: "complete",
+        attestation: `0x${"cd".repeat(32)}`,
+        decodedMessage: {
+          destinationDomain: "5",
+          decodedMessageBody: { amount: "999", mintRecipient: EXPECTED_ATA },
+        },
+      },
+    ],
+    signatures: [{ signature: "deliverysig", err: null }],
+    transactions: { deliverysig: solanaTx() },
+  });
+  const quote = await quoteOf(plugin);
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "failed");
+  assert.match(status.detail, /does not match/);
+});
+
+test("a matching decoded message passes the binding check", async () => {
+  const plugin = client({
+    balance: 5_000_000,
+    messages: [
+      {
+        status: "complete",
+        attestation: `0x${"cd".repeat(32)}`,
+        decodedMessage: {
+          destinationDomain: "5",
+          // Circle may render the Solana recipient in base58.
+          decodedMessageBody: { amount: "100000000", mintRecipient: EXPECTED_ATA },
+        },
+      },
+    ],
+    signatures: [{ signature: "deliverysig", err: null }],
+    transactions: { deliverysig: solanaTx() },
+  });
+  const quote = await quoteOf(plugin);
+  const status = await plugin.getStatus(
+    { intent, quote, reference: { chainId: "eip155:1", txId: TX, submittedAt: "" } },
+    context,
+  );
+  assert.equal(status.state, "completed");
+});
+
+test("a transient RPC error at quote time fails the quote instead of zeroing the baseline", async () => {
+  const plugin = client({ balanceError: { code: -32005, message: "Node is behind" } });
+  await assert.rejects(
+    () => plugin.quote(intent, context),
+    (error) => {
+      assert.equal(error.code, "RPC_UNAVAILABLE");
+      return true;
+    },
+  );
 });
 
 test("rejects a status reference from the wrong chain", async () => {

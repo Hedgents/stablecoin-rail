@@ -18,6 +18,7 @@ import {
 import { LayerZeroTransferApi } from "./http.js";
 import {
   amount,
+  assertApprovalOrdering,
   chooseQuote,
   destinationReference,
   etaSeconds,
@@ -27,6 +28,7 @@ import {
   QUOTE_ID,
   sameAsset,
   SOLANA_ADDRESS,
+  stepKindFromCallData,
 } from "./shared.js";
 import type { LayerZeroTransferApiOptions } from "./types.js";
 
@@ -193,7 +195,7 @@ export function createLayerZeroUsdgRobinhoodToSolana(options: LayerZeroTransferA
         fail("EMPTY_USER_STEPS", "LayerZero returned no wallet steps.");
       }
 
-      return upstreamSteps.map((step, index) => {
+      const steps = upstreamSteps.map((step, index): WalletStep => {
         if (step.type !== "TRANSACTION") {
           fail(
             "UNSUPPORTED_USER_STEP",
@@ -208,12 +210,20 @@ export function createLayerZeroUsdgRobinhoodToSolana(options: LayerZeroTransferA
         }
         const description = step.description ?? "Send USDG to Solana";
         const { to, data } = decodeEvmTransaction(step.transaction.encoded);
+        // Kind comes from the calldata, never from optional display text.
+        const kind = stepKindFromCallData(data);
+        if (kind === "approval" && to.toLowerCase() !== ROBINHOOD_USDG_ADDRESS.toLowerCase()) {
+          fail("UNEXPECTED_APPROVAL_TARGET", "The approval does not target the USDG token contract.");
+        }
         return {
           id: `layerzero-usdg-${index + 1}`,
-          kind: /approv/i.test(description) ? "approval" : "funding",
+          kind,
           chainId: ROBINHOOD_MAINNET_CHAIN_ID,
           label: description,
-          description: "Move canonical USDG from Robinhood Chain to canonical USDG on Solana.",
+          description:
+            kind === "approval"
+              ? "Allowance for the USDG bridge contract. No USDG moves in this step."
+              : "Move canonical USDG from Robinhood Chain to canonical USDG on Solana.",
           request: {
             namespace: "evm",
             chainId: ROBINHOOD_MAINNET_CHAIN_ID,
@@ -224,6 +234,8 @@ export function createLayerZeroUsdgRobinhoodToSolana(options: LayerZeroTransferA
           },
         };
       });
+      assertApprovalOrdering(PLUGIN_ID, steps.map((step) => step.kind as "approval" | "funding"));
+      return steps;
     },
 
     getStatus: async ({ intent, quote, reference }, context) => {

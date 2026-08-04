@@ -65,19 +65,29 @@ export function etaSeconds(quote: LayerZeroQuote) {
  * A `SWAP` step means the provider would convert the token on the way, which
  * the rail refuses by default: the user asked to move a stablecoin, not to
  * trade it. The exact source amount must also survive untouched.
+ *
+ * Every route this module serves is a like-for-like transfer of the same
+ * token with the same decimals on both ends, so an honest quote can never
+ * promise MORE out than in: fees only subtract. An output above the input is
+ * a units bug or a tampered response, and because ranking sorts by
+ * `dstAmountMin` descending, such a quote would otherwise always win. It is
+ * rejected instead.
  */
 export function chooseQuote(
   pluginId: string,
   quotes: LayerZeroQuote[],
   exactSourceAmount: string,
 ): LayerZeroQuote | null {
+  const source = BigInt(exactSourceAmount);
   const valid = quotes.filter((quote) => {
     try {
+      const destination = BigInt(amount(pluginId, quote.dstAmount, "dstAmount"));
+      const destinationMinimum = BigInt(amount(pluginId, quote.dstAmountMin, "dstAmountMin"));
       return (
         QUOTE_ID.test(quote.id) &&
         amount(pluginId, quote.srcAmount, "srcAmount") === exactSourceAmount &&
-        BigInt(amount(pluginId, quote.dstAmount, "dstAmount")) >=
-          BigInt(amount(pluginId, quote.dstAmountMin, "dstAmountMin")) &&
+        destination >= destinationMinimum &&
+        destination <= source &&
         !(quote.routeSteps ?? []).some((step) => step.type === "SWAP")
       );
     } catch {
@@ -91,6 +101,40 @@ export function chooseQuote(
     return etaSeconds(left) - etaSeconds(right);
   });
   return valid[0] ?? null;
+}
+
+/** ERC-20 `approve(address,uint256)`, the first 4 selector bytes in hex. */
+export const APPROVE_SELECTOR = "095ea7b3";
+
+/**
+ * Wallet-step kind derived from what the calldata DOES.
+ *
+ * The upstream `description` is optional display text and a rewording must
+ * never change execution semantics: `kind` is what tells a host to wait for
+ * the approval receipt before broadcasting the spend, so it is read from the
+ * function selector instead.
+ */
+export function stepKindFromCallData(data: string): "approval" | "funding" {
+  return data.replace(/^0x/, "").slice(0, 8).toLowerCase() === APPROVE_SELECTOR
+    ? "approval"
+    : "funding";
+}
+
+/**
+ * Steps are an ordered, dependent sequence: every approval must precede the
+ * spend it authorizes. An approval arriving after a funding step means the
+ * upstream response cannot be executed in order, which is a fail-closed stop
+ * rather than something to silently reorder.
+ */
+export function assertApprovalOrdering(pluginId: string, kinds: Array<"approval" | "funding">) {
+  const firstFunding = kinds.indexOf("funding");
+  if (firstFunding !== -1 && kinds.slice(firstFunding).includes("approval")) {
+    throw new RailPluginError(
+      pluginId,
+      "INVALID_STEP_ORDER",
+      "LayerZero returned an approval step after the funding step.",
+    );
+  }
 }
 
 function submittedAt(event: LayerZeroExecutionEvent, fallback: string) {

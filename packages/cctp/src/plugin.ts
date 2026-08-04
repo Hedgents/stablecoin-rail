@@ -20,6 +20,11 @@ const OPAQUE_SCHEMA = "hedgents.cctp.v2.evm-solana.v1";
 const DEFAULT_API = "https://iris-api.circle.com";
 const DEFAULT_FINALITY = 1000;
 const DEFAULT_TTL_SECONDS = 90;
+/** Circle's CCTP V2 programs on Solana, identical on mainnet and devnet. */
+const SOLANA_MESSAGE_TRANSMITTER_V2 = "CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC";
+const SOLANA_TOKEN_MESSENGER_MINTER_V2 = "CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe";
+const DEFAULT_DELIVERY_SCAN_LIMIT = 20;
+const NEGATIVE_CACHE_LIMIT = 500;
 /** One USDC of headroom, so a quote cannot be consumed entirely by fees. */
 const DEFAULT_BUFFER = 1_000_000n;
 const ZERO_BYTES32 = `0x${"00".repeat(32)}` as const;
@@ -51,6 +56,55 @@ function usdcAssetFor(chain: CctpSourceChain): { chainId: string; assetId: strin
   };
 }
 
+/**
+ * Solana answers `getTokenAccountBalance` for a missing account with JSON-RPC
+ * error -32602 rather than a null result. ONLY that specific error may be read
+ * as "no account yet": transient node errors (rate limits, node-behind,
+ * storage faults) arrive over HTTP 200 in the same envelope, and mistaking one
+ * for a missing account would zero the recorded pre-delivery baseline and mark
+ * a funded account as needing recipient setup.
+ */
+function isMissingAccountError(error: unknown): boolean {
+  return (
+    isRecord(error) &&
+    error.code === -32602 &&
+    typeof error.message === "string" &&
+    /could not find account/i.test(error.message)
+  );
+}
+
+/** jsonParsed account keys arrive as strings or as `{ pubkey }` records. */
+function accountKeysOf(transaction: unknown): string[] {
+  if (!isRecord(transaction) || !isRecord(transaction.message)) return [];
+  const keys = transaction.message.accountKeys;
+  if (!Array.isArray(keys)) return [];
+  return keys.flatMap((entry) => {
+    if (typeof entry === "string") return [entry];
+    if (isRecord(entry) && typeof entry.pubkey === "string") return [entry.pubkey];
+    return [];
+  });
+}
+
+interface TokenBalanceEntry {
+  owner?: unknown;
+  mint?: unknown;
+  uiTokenAmount?: { amount?: unknown };
+}
+
+/** The owner's total balance change for one mint across a transaction. */
+function ownerMintDelta(meta: Record<string, unknown>, owner: string, mint: string): bigint {
+  const entries = (value: unknown): TokenBalanceEntry[] =>
+    Array.isArray(value) ? (value as TokenBalanceEntry[]) : [];
+  const amountOf = (entry: TokenBalanceEntry): bigint => {
+    const raw = entry.uiTokenAmount?.amount;
+    return typeof raw === "string" && INTEGER.test(raw) ? BigInt(raw) : 0n;
+  };
+  const matches = (entry: TokenBalanceEntry) => entry.owner === owner && entry.mint === mint;
+  const post = entries(meta.postTokenBalances).filter(matches).reduce((sum, entry) => sum + amountOf(entry), 0n);
+  const pre = entries(meta.preTokenBalances).filter(matches).reduce((sum, entry) => sum + amountOf(entry), 0n);
+  return post - pre;
+}
+
 export function createCctpToSolana(options: CctpOptions) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const apiBaseUrl = (options.apiBaseUrl ?? DEFAULT_API).replace(/\/$/, "");
@@ -76,6 +130,17 @@ export function createCctpToSolana(options: CctpOptions) {
   if (!SOLANA_ADDRESS.test(solana.usdcMint)) {
     throw new RailPluginError(PLUGIN_ID, "INVALID_SETTLEMENT_MINT", "The Solana USDC mint is not a base58 address.");
   }
+  const deliveryPrograms = new Set(
+    solana.deliveryProgramIds ?? [SOLANA_MESSAGE_TRANSMITTER_V2, SOLANA_TOKEN_MESSENGER_MINTER_V2],
+  );
+  for (const program of deliveryPrograms) {
+    if (!SOLANA_ADDRESS.test(program)) {
+      throw new RailPluginError(PLUGIN_ID, "INVALID_PROGRAM_ID", "A delivery program ID is not a base58 address.");
+    }
+  }
+  const scanLimit = options.deliveryScanLimit ?? DEFAULT_DELIVERY_SCAN_LIMIT;
+  /** Signatures proven not to be this route's delivery; skipped on later polls. */
+  const notDelivery = new Set<string>();
 
   const sources = new Map(options.sources.map((source) => [source.chainId, source]));
 
@@ -100,34 +165,135 @@ export function createCctpToSolana(options: CctpOptions) {
     return intent.destination.settlementAsset.assetId.endsWith(`:${solana.usdcMint}`);
   }
 
-  /**
-   * Current balance of a token account, or `null` when it does not exist.
-   *
-   * Solana answers `getTokenAccountBalance` for a missing account with a
-   * JSON-RPC *error* rather than a null result, so an error payload is read as
-   * "no account yet" rather than propagated. A transport-level failure still
-   * throws, because that is a different condition.
-   */
-  async function tokenAccountBalance(account: string, signal?: AbortSignal): Promise<bigint | null> {
+  async function rpcCall(
+    method: string,
+    params: unknown[],
+    signal?: AbortSignal,
+  ): Promise<Record<string, unknown>> {
     const response = await fetchImpl(options.rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "rail-cctp",
-        method: "getTokenAccountBalance",
-        params: [account, { commitment: "confirmed" }],
-      }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: "rail-cctp", method, params }),
       ...(signal ? { signal } : {}),
     });
     if (!response.ok) fail("RPC_UNAVAILABLE", `The Solana RPC returned ${response.status}.`);
     const payload: unknown = await response.json();
     if (!isRecord(payload)) fail("RPC_UNAVAILABLE", "The Solana RPC returned a malformed response.");
-    if (payload.error) return null;
+    return payload;
+  }
+
+  /**
+   * Current balance of a token account, or `null` only when the account
+   * provably does not exist. Any other JSON-RPC error fails closed as
+   * RPC_UNAVAILABLE: an ambiguous read must abort the quote, never masquerade
+   * as an empty account, because this figure seeds the recipient-setup
+   * decision.
+   */
+  async function tokenAccountBalance(account: string, signal?: AbortSignal): Promise<bigint | null> {
+    const payload = await rpcCall("getTokenAccountBalance", [account, { commitment: "confirmed" }], signal);
+    if (payload.error) {
+      if (isMissingAccountError(payload.error)) return null;
+      const message = isRecord(payload.error) && typeof payload.error.message === "string"
+        ? payload.error.message
+        : "an unspecified error";
+      fail("RPC_UNAVAILABLE", `The Solana RPC failed the balance read: ${message}.`);
+    }
+    // A success payload without a readable amount is ambiguous, and ambiguity
+    // must not read as an empty account.
     const result = payload.result;
-    if (!isRecord(result) || !isRecord(result.value)) return null;
+    if (!isRecord(result) || !isRecord(result.value)) {
+      fail("RPC_UNAVAILABLE", "The Solana RPC returned a balance without a value.");
+    }
     const amount = result.value.amount;
-    return typeof amount === "string" && INTEGER.test(amount) ? BigInt(amount) : null;
+    if (typeof amount !== "string" || !INTEGER.test(amount)) {
+      fail("RPC_UNAVAILABLE", "The Solana RPC returned an unreadable balance amount.");
+    }
+    return BigInt(amount);
+  }
+
+  interface DeliveryCredit {
+    signature: string;
+    receivedBaseUnits: bigint;
+    submittedAt: string | null;
+  }
+
+  /**
+   * The transaction that actually delivered this transfer, or `null` while
+   * none exists yet.
+   *
+   * A raw balance-versus-baseline comparison cannot attribute a credit: an
+   * unrelated inbound payment satisfies it, and an unrelated spend starves it
+   * forever. The scan instead walks the recipient token account's recent
+   * transactions for one that succeeded, involves Circle's CCTP programs, and
+   * credits the recipient wallet by at least the guaranteed minimum. That
+   * transaction is returned as delivery evidence, with the measured credit.
+   */
+  async function findDeliveryTransaction(
+    account: string,
+    owner: string,
+    minimum: bigint,
+    signal?: AbortSignal,
+  ): Promise<DeliveryCredit | null> {
+    const payload = await rpcCall(
+      "getSignaturesForAddress",
+      [account, { limit: scanLimit, commitment: "confirmed" }],
+      signal,
+    );
+    if (payload.error) {
+      fail("RPC_UNAVAILABLE", "The Solana RPC failed the delivery scan.");
+    }
+    const entries = Array.isArray(payload.result) ? payload.result : [];
+    for (const entry of entries) {
+      if (!isRecord(entry) || typeof entry.signature !== "string") continue;
+      if (entry.err != null) continue;
+      if (notDelivery.has(entry.signature)) continue;
+
+      const tx = await rpcCall(
+        "getTransaction",
+        [entry.signature, { encoding: "jsonParsed", commitment: "confirmed", maxSupportedTransactionVersion: 0 }],
+        signal,
+      );
+      // An RPC error here must surface, not read as "not indexed yet": a
+      // persistently erroring node would otherwise pend the flow forever
+      // with no signal to the host.
+      if (tx.error) fail("RPC_UNAVAILABLE", "The Solana RPC failed the delivery-transaction read.");
+      const result = tx.result;
+      // Not indexed at this commitment yet: leave uncached and retry next poll.
+      if (!isRecord(result)) continue;
+      const meta = result.meta;
+      if (!isRecord(meta) || meta.err) {
+        rememberNotDelivery(entry.signature);
+        continue;
+      }
+      if (!accountKeysOf(result.transaction).some((key) => deliveryPrograms.has(key))) {
+        rememberNotDelivery(entry.signature);
+        continue;
+      }
+      const delta = ownerMintDelta(meta, owner, solana.usdcMint);
+      if (delta >= minimum) {
+        const blockTime = result.blockTime;
+        return {
+          signature: entry.signature,
+          receivedBaseUnits: delta,
+          submittedAt:
+            typeof blockTime === "number" && Number.isFinite(blockTime)
+              ? new Date(blockTime * 1_000).toISOString()
+              : null,
+        };
+      }
+      // A CCTP transaction below this quote's minimum is some other transfer's
+      // delivery. NOT cached: the cache is shared across quotes, and the same
+      // transaction may satisfy a concurrent quote with a smaller minimum.
+    }
+    return null;
+  }
+
+  function rememberNotDelivery(signature: string) {
+    if (notDelivery.size >= NEGATIVE_CACHE_LIMIT) {
+      const oldest = notDelivery.values().next().value;
+      if (oldest) notDelivery.delete(oldest);
+    }
+    notDelivery.add(signature);
   }
 
   function requirePins(intent: FundingIntent, quote: FundingQuote) {
@@ -353,16 +519,34 @@ export function createCctpToSolana(options: CctpOptions) {
         return { ...base, state: "pending", detail: "Circle is attesting the burn." };
       }
 
-      // Attestation means the message is signed, NOT that USDC reached the
-      // user. Prove delivery by reading the destination account instead.
-      const account = data.destinationTokenAccount;
-      const baselineRaw = data.baselineBaseUnits;
-      const minimumRaw = data.minimumOutput;
-      if (typeof account !== "string" || typeof baselineRaw !== "string" || typeof minimumRaw !== "string") {
-        fail("INVALID_QUOTE_DATA", "The CCTP quote is missing its delivery baseline.");
+      // The message was looked up by this quote's source transaction, so its
+      // decoded fields must describe this quote's transfer. A mismatch means
+      // the referenced burn is some other transfer, which is affirmative
+      // disproof rather than a transient condition.
+      if (!attestedMessageMatchesQuote(message, intent.inputAmountBaseUnits, data)) {
+        return {
+          ...base,
+          state: "failed",
+          detail: "The attested burn does not match this quote's destination, amount, or recipient.",
+        };
       }
-      const balance = await tokenAccountBalance(account, context.signal);
-      if (balance === null || balance - BigInt(baselineRaw) < BigInt(minimumRaw)) {
+
+      // Attestation means the message is signed, NOT that USDC reached the
+      // user. Prove delivery by finding the CCTP transaction that credited
+      // the recipient, so an unrelated deposit cannot complete this flow and
+      // an unrelated spend cannot starve it.
+      const account = data.destinationTokenAccount;
+      const minimumRaw = data.minimumOutput;
+      if (typeof account !== "string" || typeof minimumRaw !== "string") {
+        fail("INVALID_QUOTE_DATA", "The CCTP quote is missing its delivery data.");
+      }
+      const delivery = await findDeliveryTransaction(
+        account,
+        intent.destination.account.address,
+        BigInt(minimumRaw),
+        context.signal,
+      );
+      if (!delivery) {
         return {
           ...base,
           state: "pending",
@@ -371,11 +555,60 @@ export function createCctpToSolana(options: CctpOptions) {
       }
       return {
         ...base,
+        destinationReference: {
+          chainId: solana.chainId,
+          txId: delivery.signature,
+          submittedAt: delivery.submittedAt ?? checkedAt,
+        },
+        received: {
+          asset: intent.destination.settlementAsset,
+          amountBaseUnits: delivery.receivedBaseUnits.toString(),
+        },
         state: "completed",
         detail: "USDC delivered to the destination token account on Solana.",
       };
     },
   });
+
+  /**
+   * True when the attested message's decoded fields agree with the quote's
+   * pins. Fields Circle omits are skipped rather than failed, so an API shape
+   * change degrades to the delivery scan instead of wedging every flow.
+   */
+  function attestedMessageMatchesQuote(
+    message: Record<string, unknown> | undefined,
+    sourceAmount: string,
+    data: Record<string, unknown>,
+  ): boolean {
+    const decoded = message && isRecord(message.decodedMessage) ? message.decodedMessage : null;
+    if (!decoded) return true;
+    if (decoded.destinationDomain != null && String(decoded.destinationDomain) !== String(solana.cctpDomain)) {
+      return false;
+    }
+    const body = isRecord(decoded.decodedMessageBody) ? decoded.decodedMessageBody : null;
+    if (!body) return true;
+    // Compare the amount only when it arrives in the decimal-string shape
+    // Circle documents today. An unrecognized rendering skips the check and
+    // falls through to the delivery scan, rather than affirmatively failing a
+    // healthy transfer over an API formatting change.
+    const bodyAmount =
+      typeof body.amount === "number" && Number.isSafeInteger(body.amount)
+        ? String(body.amount)
+        : body.amount;
+    if (typeof bodyAmount === "string" && INTEGER.test(bodyAmount) && bodyAmount !== sourceAmount) {
+      return false;
+    }
+    return mintRecipientMatches(body.mintRecipient, data.mintRecipient);
+  }
+
+  function mintRecipientMatches(reported: unknown, pinned: unknown): boolean {
+    if (typeof reported !== "string" || typeof pinned !== "string") return true;
+    const normalize = (hex: string) => hex.replace(/^0x/, "").toLowerCase().padStart(64, "0");
+    if (/^0x[0-9a-fA-F]+$/.test(reported)) return normalize(reported) === normalize(pinned);
+    // Circle may render a Solana recipient in base58 rather than hex.
+    if (SOLANA_ADDRESS.test(reported)) return normalize(toBytes32(reported)) === normalize(pinned);
+    return true;
+  }
 }
 
 export type { TransactionReference };

@@ -250,3 +250,108 @@ for (const item of fundingProviderConformance({
     await item.run();
   });
 }
+
+test("rejects a quote promising more out than in, even when it would win ranking", async () => {
+  const inflated = {
+    quotes: [
+      {
+        id: `0x${"4".repeat(64)}`,
+        routeSteps: [{ type: "OFT_V2", srcChainKey: "robinhood" }],
+        duration: { estimated: "5000" },
+        expiresAt: String(NOW + 60_000),
+        srcAmount: "100000000",
+        // A like-for-like transfer can never deliver more than it takes.
+        dstAmount: "100000000000",
+        dstAmountMin: "100000000000",
+      },
+      ...QUOTES.quotes,
+    ],
+  };
+  const draft = await build({ quotes: inflated }).quote(intent, context);
+  assert.equal(draft.id, QUOTE_ID);
+  assert.equal(draft.minimumOutput.amountBaseUnits, "99800000");
+});
+
+test("derives the step kind from the calldata selector, not the description", async () => {
+  const approveData = `0x095ea7b3${"00".repeat(64)}`;
+  const steps = {
+    userSteps: [
+      {
+        type: "TRANSACTION",
+        // No description at all: the old inference would have called this
+        // "funding" and a host would never await the approval receipt.
+        chainKey: "robinhood",
+        chainType: "EVM",
+        signerAddress: SIGNER,
+        transaction: { encoded: { to: ROBINHOOD_USDG_ADDRESS, data: approveData, value: "0" } },
+      },
+      {
+        type: "TRANSACTION",
+        // A misleading description must not turn the spend into an "approval".
+        description: "Approve and send USDG to Solana",
+        chainKey: "robinhood",
+        chainType: "EVM",
+        signerAddress: SIGNER,
+        transaction: { encoded: { to: OFT, data: CALLDATA, value: "0" } },
+      },
+    ],
+  };
+  const plugin = build({ steps });
+  const prepared = await plugin.prepare({ intent, quote: await quoteOf(plugin) }, context);
+  assert.deepEqual(prepared.map((step) => step.kind), ["approval", "funding"]);
+});
+
+test("refuses an approval that does not target the USDG token contract", async () => {
+  const approveData = `0x095ea7b3${"00".repeat(64)}`;
+  const steps = {
+    userSteps: [
+      {
+        type: "TRANSACTION",
+        chainKey: "robinhood",
+        chainType: "EVM",
+        signerAddress: SIGNER,
+        transaction: { encoded: { to: OFT, data: approveData, value: "0" } },
+      },
+    ],
+  };
+  const plugin = build({ steps });
+  const quote = await quoteOf(plugin);
+  await assert.rejects(
+    () => plugin.prepare({ intent, quote }, context),
+    (error) => {
+      assert.equal(error.code, "UNEXPECTED_APPROVAL_TARGET");
+      return true;
+    },
+  );
+});
+
+test("refuses an approval step arriving after the funding step", async () => {
+  const approveData = `0x095ea7b3${"00".repeat(64)}`;
+  const steps = {
+    userSteps: [
+      {
+        type: "TRANSACTION",
+        chainKey: "robinhood",
+        chainType: "EVM",
+        signerAddress: SIGNER,
+        transaction: { encoded: { to: OFT, data: CALLDATA, value: "0" } },
+      },
+      {
+        type: "TRANSACTION",
+        chainKey: "robinhood",
+        chainType: "EVM",
+        signerAddress: SIGNER,
+        transaction: { encoded: { to: ROBINHOOD_USDG_ADDRESS, data: approveData, value: "0" } },
+      },
+    ],
+  };
+  const plugin = build({ steps });
+  const quote = await quoteOf(plugin);
+  await assert.rejects(
+    () => plugin.prepare({ intent, quote }, context),
+    (error) => {
+      assert.equal(error.code, "INVALID_STEP_ORDER");
+      return true;
+    },
+  );
+});

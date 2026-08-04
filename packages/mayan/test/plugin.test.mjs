@@ -75,6 +75,7 @@ function build(opts = {}) {
     fetch: async (input) => {
       const url = String(input);
       if (url === RPC) {
+        if (opts.balanceError) return json({ jsonrpc: "2.0", id: 1, error: opts.balanceError });
         return "balance" in opts && opts.balance === null
           ? json({ jsonrpc: "2.0", id: 1, error: { code: -32602, message: "could not find account" } })
           : json({ jsonrpc: "2.0", id: 1, result: { value: { amount: String(opts.balance ?? 0) } } });
@@ -113,6 +114,27 @@ test("absorbs binary representation noise before truncating", () => {
 test("rejects a non-finite amount rather than coercing it", () => {
   assert.throws(() => floorToBaseUnits(Number.NaN, 6));
   assert.throws(() => floorToBaseUnits(-1, 6));
+});
+
+test("never rounds up across a base-unit boundary", () => {
+  // toFixed's round-to-nearest can carry INTO the kept digits when the input
+  // sits within ~5e-9 below a boundary. The result must stay the true floor:
+  // one unit above the guarantee would make an honest minimum-exact fill
+  // unable to ever satisfy the delivery check.
+  assert.equal(floorToBaseUnits(99.999999996, 6), 99_999_999n);
+  assert.equal(floorToBaseUnits(0.123456996, 6), 123_456n);
+  assert.equal(floorToBaseUnits(0.9999999999, 6), 999_999n);
+});
+
+test("a transient RPC error at quote time fails the quote instead of zeroing the baseline", async () => {
+  const plugin = build({ balanceError: { code: -32005, message: "Node is behind" } });
+  await assert.rejects(
+    () => plugin.quote(intent, context),
+    (error) => {
+      assert.equal(error.code, "RPC_UNAVAILABLE");
+      return true;
+    },
+  );
 });
 
 test("supports the BNB Binance-Peg USDC route only", async () => {
@@ -318,6 +340,25 @@ test("rejects a status reference from the wrong chain", async () => {
       ),
     (error) => {
       assert.equal(error.code, "REFERENCE_CHAIN_MISMATCH");
+      return true;
+    },
+  );
+});
+
+test("a transient RPC error during a status poll throws RPC_UNAVAILABLE", async () => {
+  const opts = { balance: 0, swap: { status: "IN_PROGRESS" } };
+  const plugin = build(opts);
+  const quote = await quoteOf(plugin);
+  // The RPC starts failing only after the quote, during delivery polling.
+  opts.balanceError = { code: -32005, message: "Node is behind" };
+  await assert.rejects(
+    () =>
+      plugin.getStatus(
+        { intent, quote, reference: { chainId: "eip155:56", txId: `0x${"ab".repeat(32)}`, submittedAt: "" } },
+        context,
+      ),
+    (error) => {
+      assert.equal(error.code, "RPC_UNAVAILABLE");
       return true;
     },
   );

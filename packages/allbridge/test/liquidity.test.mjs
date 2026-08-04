@@ -109,3 +109,33 @@ test("fails clearly when a chain or symbol is absent", async () => {
     /does not list chain TRX/,
   );
 });
+
+test("rescales a 6-decimal source amount against an 18-decimal destination pool", () => {
+  // BSC-style token: 18 decimals, 60,000 tokens deep, balanced.
+  const bsc = readPoolDepth(
+    {
+      symbol: "USDT",
+      decimals: 18,
+      poolInfo: { tokenBalance: "60000000", vUsdBalance: "60000000", dValue: "120000000" },
+    },
+    "BSC",
+  );
+  const trx = readPoolDepth(
+    {
+      symbol: "USDT",
+      decimals: 6,
+      poolInfo: { tokenBalance: "60000000", vUsdBalance: "60000000", dValue: "120000000" },
+    },
+    "TRX",
+  );
+  // 50,000 USDT from a 6-decimal source into a 60,000-token destination pool
+  // is ~83% of destination depth: severe, not "comfortably deep enough".
+  const severe = assessLiquidity(trx, bsc, 50_000_000_000n);
+  assert.equal(severe.band, "severe");
+  assert.ok(severe.destinationSharePct > 80 && severe.destinationSharePct < 85);
+
+  // The reverse direction: an 18-decimal source amount must not read as
+  // astronomically large against a 6-decimal destination pool.
+  const small = assessLiquidity(bsc, trx, 100n * 10n ** 18n);
+  assert.equal(small.band, "low");
+});

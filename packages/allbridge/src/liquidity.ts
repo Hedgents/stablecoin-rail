@@ -110,12 +110,24 @@ export function readPoolDepth(token: AllbridgeToken, chainKey: string): PoolDept
   };
 }
 
+/** The same nominal amount expressed in another token's base units. */
+function rescale(amount: bigint, fromDecimals: number, toDecimals: number): bigint {
+  if (toDecimals >= fromDecimals) return amount * 10n ** BigInt(toDecimals - fromDecimals);
+  return amount / 10n ** BigInt(fromDecimals - toDecimals);
+}
+
 export function assessLiquidity(
   source: PoolDepth,
   destination: PoolDepth,
   amountBaseUnits: bigint,
 ): LiquidityAssessment {
-  const destinationSharePct = percent(amountBaseUnits, destination.tokenBaseUnits);
+  // The amount arrives in SOURCE-token base units; the destination pool depth
+  // is in the destination token's own base units, and Allbridge lists the
+  // same symbol with different decimals per chain (BSC stables are 18, TRX
+  // and Solana are 6). Comparing without rescaling would be off by 10^12 on a
+  // 6-to-18 route, inverting the warning this module exists to give.
+  const amountInDestinationUnits = rescale(amountBaseUnits, source.decimals, destination.decimals);
+  const destinationSharePct = percent(amountInDestinationUnits, destination.tokenBaseUnits);
   const depleted = destination.tokenSharePct < DEPLETED_TOKEN_SHARE_PCT;
 
   let band: LiquidityBand;
@@ -148,6 +160,11 @@ export interface AssessRequest {
   sourceChainKey: string;
   destinationChainKey: string;
   symbol: string;
+  /**
+   * The transfer amount in the SOURCE token's base units, matching the
+   * intent's `inputAmountBaseUnits`. Rescaled internally before it is
+   * compared against destination pool depth.
+   */
   amountBaseUnits: bigint;
 }
 
