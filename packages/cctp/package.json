@@ -6,7 +6,7 @@
   "sideEffects": false,
   "license": "Apache-2.0",
   "author": "Hedgents",
-  "homepage": "https://hedgents.com",
+  "homepage": "https://github.com/Hedgents/stablecoin-rail#readme",
   "keywords": [
     "solana",
     "usdc",
@@ -45,5 +45,13 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hedgents/stablecoin-rail.git",
+    "directory": "packages/cctp"
+  },
+  "bugs": {
+    "url": "https://github.com/Hedgents/stablecoin-rail/issues"
   }
 }

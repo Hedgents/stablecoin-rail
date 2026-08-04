@@ -1,0 +1,41 @@
+name: Publish
+
+# Publishing runs here rather than from a laptop because every package sets
+# `provenance: true`, which requires an OIDC-attested CI build. A local
+# `npm publish` will refuse.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "npm dist-tag (use 'alpha' until a security review has happened)"
+        required: true
+        default: alpha
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # Dependency order matters: core first, then the packages that pin it.
+      - name: Publish
+        run: |
+          for pkg in stablecoin-rail stablecoin-rail-solana stablecoin-rail-cctp \
+                     stablecoin-rail-mayan stablecoin-rail-layerzero \
+                     stablecoin-rail-allbridge stablecoin-rail-react; do
+            npm publish --workspace "@hedgents/$pkg" --tag "${{ inputs.tag }}" --access public
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

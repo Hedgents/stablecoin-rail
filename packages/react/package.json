@@ -38,5 +38,14 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hedgents/stablecoin-rail.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/Hedgents/stablecoin-rail/issues"
+  },
+  "homepage": "https://github.com/Hedgents/stablecoin-rail#readme"
 }
