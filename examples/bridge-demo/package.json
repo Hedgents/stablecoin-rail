@@ -12,14 +12,14 @@
   },
   "dependencies": {
     "@hedgents/stablecoin-rail": "0.2.0",
+    "@hedgents/stablecoin-rail-allbridge": "0.1.0",
     "@hedgents/stablecoin-rail-cctp": "0.1.0",
     "@hedgents/stablecoin-rail-layerzero": "0.1.0",
     "@hedgents/stablecoin-rail-mayan": "0.1.0",
     "@hedgents/stablecoin-rail-react": "0.1.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
     "@mayanfinance/swap-sdk": "^15.1.0",
-    "@hedgents/stablecoin-rail-solana": "0.1.0"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@types/react": "^19.1.9",

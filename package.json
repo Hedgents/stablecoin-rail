@@ -5,7 +5,7 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/solana-jupiter"
   ],
   "scripts": {
     "build": "npm run build --workspace=@hedgents/stablecoin-rail && npm run build --workspace=@hedgents/stablecoin-rail-solana && npm run build --workspace=@hedgents/stablecoin-rail-cctp && npm run build --workspace=@hedgents/stablecoin-rail-mayan && npm run build --workspace=@hedgents/stablecoin-rail-allbridge && npm run build --workspace=@hedgents/stablecoin-rail-layerzero && npm run build --workspace=@hedgents/stablecoin-rail-react && npm run build --workspace=@hedgents/rail-example-solana-jupiter",

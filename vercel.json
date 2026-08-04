@@ -1,10 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install",
-  "buildCommand": "npm run build && npm run build --workspace=@hedgents/rail-example-bridge-demo && npm run bundle:server --workspace=@hedgents/rail-example-bridge-demo",
+  "installCommand": "npm install --prefix examples/bridge-demo",
+  "buildCommand": "npm run build --prefix examples/bridge-demo && npm run bundle:server --prefix examples/bridge-demo",
   "outputDirectory": "examples/bridge-demo/dist",
   "functions": {
-    "api/*.mjs": { "includeFiles": "examples/bridge-demo/server-bundle.cjs" }
+    "api/*.mjs": { "includeFiles": "examples/bridge-demo/{server-bundle.cjs,node_modules/**}" }
   },
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
