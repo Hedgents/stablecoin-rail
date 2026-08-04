@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           for spec in ${PUBLISHED:-}; do
-            npm deprecate "$spec" "Alpha. Unaudited, and no route has completed a mainnet transfer. Not for production use."
+            npm deprecate "$spec" "Alpha. One route (Ethereum USDC to Solana USDC) has completed a mainnet transfer; every other route is unproven, and there has been no independent security review. See docs/STATUS.md. Not for production use."
             echo "deprecated $spec"
           done
         env:

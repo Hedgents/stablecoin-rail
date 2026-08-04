@@ -1,6 +1,6 @@
 {
   "name": "@hedgents/stablecoin-rail-layerzero",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LayerZero Value Transfer API funding adapters for Hedgents Stablecoin Rail.",
   "type": "module",
   "sideEffects": false,

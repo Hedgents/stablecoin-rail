@@ -1,6 +1,6 @@
 {
   "name": "@hedgents/stablecoin-rail-allbridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Allbridge Core pool-liquidity assessment for the Hedgents stablecoin rail.",
   "type": "module",
   "sideEffects": false,

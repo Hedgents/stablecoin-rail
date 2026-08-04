@@ -1,6 +1,6 @@
 {
   "name": "@hedgents/stablecoin-rail-mayan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Mayan adapter route for Binance-Peg USDC on BNB Chain into native Solana USDC.",
   "type": "module",
   "license": "Apache-2.0",

@@ -1,6 +1,6 @@
 {
   "name": "@hedgents/stablecoin-rail-solana",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Solana address helpers and settlement verification for the Hedgents stablecoin rail.",
   "type": "module",
   "sideEffects": false,
