@@ -32,6 +32,15 @@ The LayerZero adapter pins both token contracts and both chains, ranks the provi
 
 This is one adapter, not the scope of the rail. The product is designed to fund Solana actions with USDC, USDT, USDG, and future verified stablecoins from any supported source chain.
 
+## Install
+
+```bash
+npm i @hedgents/stablecoin-rail@alpha @hedgents/stablecoin-rail-cctp@alpha
+```
+
+Alpha, and deliberately so: no route has completed a mainnet transfer and there
+has been no independent security review. See [docs/STATUS.md](docs/STATUS.md).
+
 ## Try it
 
 `examples/bridge-demo` is a small website that moves a stablecoin from another chain into a Solana wallet. It is the shortest complete integration reference: funding-only intents, ranking across three providers, resume, and provider credentials kept server-side.

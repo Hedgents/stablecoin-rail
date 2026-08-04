@@ -95,7 +95,18 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 
 ## Testing
 
-184 tests, no network I/O; every upstream response is a recorded fixture. Provider adapters are additionally checked against the shared conformance suite, so a plugin cannot pass on its own test doubles alone.
+184 tests, no network I/O; every upstream response is a recorded fixture.
+
+Separately, `scripts/verify-published.mjs` installs the **published** packages
+from npm into a throwaway directory outside this workspace and exercises them
+against live endpoints. That distinction matters: consuming them from inside the
+monorepo proves nothing, because npm workspaces link the local folder whenever
+its version satisfies the range, so a missing file or a broken `exports` map
+would still resolve locally and break only for an actual installer.
+
+```bash
+node scripts/verify-published.mjs alpha
+``` Provider adapters are additionally checked against the shared conformance suite, so a plugin cannot pass on its own test doubles alone.
 
 ```bash
 npm install && npm test

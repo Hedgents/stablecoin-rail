@@ -1,0 +1,31 @@
+name: Verify published
+
+# Installs the published packages from npm into a throwaway directory OUTSIDE
+# this workspace and exercises them against live provider endpoints.
+#
+# Consuming them from inside the monorepo would prove nothing: npm workspaces
+# link the local folder whenever its version satisfies the range, so a missing
+# file or a broken exports map would still resolve locally and only break for
+# an actual installer.
+#
+# Hits live third-party endpoints, so it runs on a schedule and on demand
+# rather than on every push, where it would be a flaky gate.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: npm dist-tag to verify
+        required: true
+        default: alpha
+  schedule:
+    - cron: "0 7 * * 1"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/verify-published.mjs ${{ inputs.tag || 'alpha' }}
