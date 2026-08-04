@@ -1,15 +1,18 @@
 name: Publish
 
-# Publishing runs here rather than from a laptop because every package sets
-# `provenance: true`, which requires an OIDC-attested CI build. A local
-# `npm publish` will refuse.
+# Runs here rather than from a laptop because every package sets
+# `provenance: true`, which requires an OIDC-attested CI build.
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "npm dist-tag (use 'alpha' until a security review has happened)"
+        description: "npm dist-tag (keep 'alpha' until a security review has happened)"
         required: true
         default: alpha
+      deprecate:
+        description: "Mark newly published versions as alpha-deprecated"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -28,14 +31,46 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
-      # Dependency order matters: core first, then the packages that pin it.
-      - name: Publish
+
+      - name: Confirm the token authenticates
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Idempotent: a version already on the registry is skipped rather than
+      # failing the run, so re-running after a partial publish is safe.
+      # Order follows the dependency graph, core first.
+      - name: Publish changed versions
         run: |
+          set -euo pipefail
+          published=""
           for pkg in stablecoin-rail stablecoin-rail-solana stablecoin-rail-cctp \
                      stablecoin-rail-mayan stablecoin-rail-layerzero \
                      stablecoin-rail-allbridge stablecoin-rail-react; do
-            npm publish --workspace "@hedgents/$pkg" --tag "${{ inputs.tag }}" --access public
+            name="@hedgents/$pkg"
+            version=$(node -p "require('./packages/${pkg#stablecoin-rail-}/package.json').version" 2>/dev/null \
+                      || node -p "require('./packages/core/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip    $name@$version (already on the registry)"
+            else
+              echo "publish $name@$version"
+              npm publish --workspace "$name" --tag "${{ inputs.tag }}" --access public
+              published="$published $name@$version"
+            fi
+          done
+          echo "PUBLISHED=$published" >> "$GITHUB_ENV"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Deprecations are per-version, so a new version arrives undeprecated and
+      # the warning has to be reapplied every release.
+      - name: Deprecate newly published versions
+        if: ${{ inputs.deprecate }}
+        run: |
+          set -euo pipefail
+          for spec in ${PUBLISHED:-}; do
+            npm deprecate "$spec" "Alpha. Unaudited, and no route has completed a mainnet transfer. Not for production use."
+            echo "deprecated $spec"
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
