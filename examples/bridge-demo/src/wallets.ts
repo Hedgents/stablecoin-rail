@@ -81,6 +81,41 @@ export async function connectTron(): Promise<string> {
   return address;
 }
 
+/**
+ * Block until a transaction is mined, and throw if it reverted.
+ *
+ * `eth_sendTransaction` resolves as soon as a transaction is BROADCAST, not
+ * when it is mined. Sending an approval and then immediately sending the
+ * transfer that depends on it means the transfer can reach the chain first and
+ * revert with "ERC20: transfer amount exceeds allowance". Steps that depend on
+ * each other must be awaited, not merely ordered.
+ */
+export async function waitForReceipt(
+  hash: string,
+  { timeoutMs = 300_000, intervalMs = 3_000 }: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<void> {
+  const provider = window.ethereum;
+  if (!provider) throw new Error("No EVM wallet found.");
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const receipt = (await provider.request({
+      method: "eth_getTransactionReceipt",
+      params: [hash],
+    })) as { status?: string } | null;
+
+    if (receipt) {
+      // A mined-but-reverted transaction must not be treated as success.
+      if (typeof receipt.status === "string" && receipt.status !== "0x1") {
+        throw new Error(`Transaction ${hash} reverted on chain.`);
+      }
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Timed out waiting for ${hash} to confirm. It may still land; check your wallet.`);
+}
+
 /** Submit one prepared step and return its transaction hash. */
 export async function submitStep(step: WalletStep, account: string): Promise<string> {
   if (step.request.namespace === "evm") {

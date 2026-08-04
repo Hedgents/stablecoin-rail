@@ -8,7 +8,7 @@ import {
 import { createRemoteFundingProvider } from "@hedgents/stablecoin-rail/remote";
 import { decodeBase58 } from "@hedgents/stablecoin-rail-solana";
 import { useRailFlow } from "@hedgents/stablecoin-rail-react";
-import { connectEvm, connectTron, sendTokenTransfer, submitStep } from "./wallets.js";
+import { connectEvm, connectTron, sendTokenTransfer, submitStep, waitForReceipt } from "./wallets.js";
 
 const STORAGE_KEY = "rail-bridge-demo/flow";
 
@@ -297,6 +297,17 @@ function Bridge({
       let fundingHash: string | null = null;
       for (const step of snap.fundingSteps as WalletStep[]) {
         const hash = await submitStep(step, account);
+        /*
+         * An approval must be MINED before the step that spends it is sent.
+         * eth_sendTransaction resolves on broadcast, so firing both back to
+         * back lets the transfer reach the chain first and revert with
+         * "ERC20: transfer amount exceeds allowance".
+         */
+        if (step.kind === "approval" && step.request.namespace === "evm") {
+          setBusy("waiting for the approval to confirm");
+          await waitForReceipt(hash);
+          setBusy("signing");
+        }
         // The reference is the funding transaction, not an approval.
         if (step.kind === "funding") fundingHash = hash;
       }

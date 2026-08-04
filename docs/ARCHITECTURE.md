@@ -30,7 +30,10 @@ The application must:
 1. Render the exact step.
 2. Verify the connected chain and account.
 3. Request the wallet signature.
-4. Pass the resulting transaction reference back into `RailFlow`.
+4. **Wait for a dependent step to be mined before sending the next one.**
+5. Pass the resulting transaction reference back into `RailFlow`.
+
+Step 4 is not optional and is easy to miss. `WalletStep[]` is ordered, and an `approval` step must be **confirmed on chain** before the `funding` step that spends it. `eth_sendTransaction` resolves as soon as a transaction is broadcast, not when it is mined, so sending both back to back lets the transfer reach the chain first and revert with `ERC20: transfer amount exceeds allowance`. Poll `eth_getTransactionReceipt` between them and treat a non-`0x1` status as failure.
 
 ## Atomicity
 

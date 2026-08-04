@@ -160,6 +160,14 @@ export type WalletRequest =
   | SolanaTransactionRequest
   | TronTransactionRequest;
 
+/**
+ * One unsigned request for the user's wallet.
+ *
+ * Steps are ORDERED and may depend on one another: an `approval` must be mined
+ * before the `funding` step that spends it. A host that merely sends them in
+ * order without awaiting confirmation will see the dependent step revert,
+ * because wallet send methods resolve on broadcast rather than on inclusion.
+ */
 export interface WalletStep {
   id: string;
   kind: "approval" | "funding" | "destination-action";
