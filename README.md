@@ -38,8 +38,9 @@ This is one adapter, not the scope of the rail. The product is designed to fund 
 npm i @hedgents/stablecoin-rail@alpha @hedgents/stablecoin-rail-cctp@alpha
 ```
 
-Alpha, and deliberately so: no route has completed a mainnet transfer and there
-has been no independent security review. See [docs/STATUS.md](docs/STATUS.md).
+Alpha. One route (Ethereum USDC to Solana) has completed a real mainnet
+transfer; every other route is unproven, and there has been no independent
+security review. See [docs/STATUS.md](docs/STATUS.md).
 
 ## Try it
 

@@ -28,19 +28,42 @@ A bridge aggregator's job ends when tokens land. This ranks the **guaranteed fin
 
 ---
 
-## Current status: alpha, and no route has moved real money
+## Current status: alpha, with one route proven on mainnet
 
-**Nothing here has completed a mainnet transfer.** Quoting has been exercised against live Circle, Mayan, LayerZero, Allbridge, and Solana endpoints. Signing has not been exercised at all. There has been no independent security review.
+**Ethereum USDC to Solana USDC has completed a real mainnet transfer.** Everything else remains unproven, and there has been no independent security review.
 
-Treat this as a working demonstration of a design, not as production infrastructure.
+### The proof
+
+| | |
+|---|---|
+| Route | Ethereum USDC → Solana USDC, Circle CCTP V2 |
+| Sent | 5.000000 USDC |
+| Guaranteed | 4.875317 USDC |
+| Source transaction | `0x509ce416c0fd1908053e39221e1c1e157a4e52324514882296fbf194df5152f1` |
+| Circle attestation | `complete`, domain 0 → 5 |
+| Destination | `FtXSmydZCxEu78tr2sTcbSNByGPENZu7wNJNMhz1vP7B` |
+| Cost | 0.124183 forwarding, 0.000500 protocol |
+
+Independently verified after the fact against Circle's message API and the destination token account, not merely reported by the interface that performed it.
+
+### What that transfer does and does not prove
+
+It proves the full path end to end: quote, exact-amount approval, `depositForBurnWithHook`, Circle's Forwarding Service delivering on Solana, and **completion detected by the destination balance actually moving** rather than by a provider claiming success. That last mechanism existed because Circle exposes no destination-transaction identifier, and it had never run against a real delivery until now.
+
+It does not prove Base, Arbitrum, or Monad, which share the code path but have not been exercised. It does not prove the Mayan or LayerZero routes at all. It does not prove refund handling, and it does not prove resume across a genuine mid-transfer reload.
+
+The forwarding fee is flat rather than proportional: the same 0.124 USDC applies at 5 USDC or 500, so the ~2.5% observed on a 5 USDC transfer is an artefact of the test size.
+
+Treat this as a working demonstration of a design with one route validated, not as production infrastructure.
 
 ### Routes
 
 | Route | Provider | Asset integrity | State |
 |---|---|---|---|
-| Ethereum USDC → Solana USDC | Circle CCTP V2 | native, like-for-like | Implemented, unproven on mainnet |
-| Base USDC → Solana USDC | Circle CCTP V2 | native, like-for-like | Implemented, unproven on mainnet |
-| Arbitrum USDC → Solana USDC | Circle CCTP V2 | native, like-for-like | Implemented, unproven on mainnet |
+| Ethereum USDC → Solana USDC | Circle CCTP V2 | native, like-for-like | **Proven on mainnet** |
+| Base USDC → Solana USDC | Circle CCTP V2 | native, like-for-like | Implemented, same code path as the proven route, unexercised |
+| Arbitrum USDC → Solana USDC | Circle CCTP V2 | native, like-for-like | Implemented, same code path as the proven route, unexercised |
+| Monad USDC → Solana USDC | Circle CCTP V2 | native, like-for-like | Implemented, same code path as the proven route, unexercised |
 | BNB Binance-Peg USDC → Solana USDC | Mayan | **issuer boundary, swap** | Implemented, unproven on mainnet |
 | TRON USDT → Solana USDT | USDT0 / LayerZero | canonical, like-for-like | Implemented, needs an API key |
 | Robinhood USDG → Solana USDG | LayerZero OFT | canonical, like-for-like | Implemented, needs an API key |
@@ -78,7 +101,7 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 
 ### Known limitations, stated rather than buried
 
-- **Settlement verification has never run against a real delivery.** It is tested only against recorded RPC fixtures.
+- **Settlement verification has now run against one real delivery**, on the Ethereum route. Every other route's verification is still exercised only against recorded fixtures.
 - **Circle exposes no destination-transaction identifier** for a forwarded transfer, so the CCTP route proves delivery by destination balance and cannot report an exact received amount.
 - **Mayan reports amounts as JavaScript numbers**, so amounts far above ~1e9 units cannot be converted exactly. That is a limitation of an API that sends money as a float.
 - **A wallet approval lost before `markFundingSubmitted`** cannot be recovered by any SDK-side design. Hosts must persist the reference at submission time.
@@ -88,7 +111,7 @@ Both LayerZero routes are gated on a single `LAYERZERO_API_KEY`. Everything else
 
 ## Before anyone uses this for real money
 
-1. A small-value mainnet transfer on each enabled route, with fees, latency, and refund behaviour recorded
+1. A small-value mainnet transfer on **each remaining** route, with fees, latency, and refund behaviour recorded. Ethereum is done; Base, Arbitrum, Monad, BNB, TRON, and Robinhood are not
 2. An independent security review of the plugin contracts and every provider adapter
 3. Rate limiting, order-size caps, and jurisdiction policy at the host layer. The SDK deliberately ships none of these, because it cannot know your rules and a token gesture would invite integrators to assume protection they do not have
 4. A configured USDT0 contract allowlist for the TRON route
