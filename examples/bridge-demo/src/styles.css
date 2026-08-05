@@ -88,6 +88,13 @@ body::after {
   align-items: start;
 }
 
+/* The first view is intentionally quiet: context and one form. Cost and
+ * progress columns join the layout only after the visitor asks for a quote. */
+.shell-clean {
+  max-width: 56rem;
+  grid-template-columns: .9fr 1.1fr;
+}
+
 .col { display: grid; gap: 0; align-content: start; min-width: 0; }
 
 /* The intro column is standing context, so it stays put while the rest moves. */
@@ -293,6 +300,8 @@ body::after {
 .addr[aria-invalid="true"] { border-color: #e0a9a4; }
 .addr::placeholder { color: var(--ink-faint); }
 
+.receive-preview { margin-top: .9rem; }
+
 .field-note { display: block; margin-top: .4rem; font-size: .82rem; color: var(--ink-faint); }
 .field-note.ok { color: var(--brand); }
 .field-note.bad { color: var(--danger); }
@@ -397,6 +406,10 @@ body::after {
 
 .support { border-top: 1px solid #cfe4dd; margin-top: .8rem; padding-top: .8rem; }
 .support p { margin: 0 0 .6rem; font-size: .88rem; color: var(--ink-soft); }
+.support-row { display: flex; align-items: stretch; gap: .6rem; margin: 0 0 .5rem; }
+.support-row .amount-row { flex: 1; margin-top: 0; }
+.support-row .amount-in { font-size: 1rem; }
+.support-row .ghost { white-space: nowrap; }
 
 .fail { color: var(--danger); font-size: .85rem; margin: 0; }
 .declined { padding: .6rem 1rem .8rem; font-size: .82rem; color: var(--ink-faint); }
@@ -458,15 +471,6 @@ code {
 
 /* ------------------------------------------------------- column tuning */
 
-.col-detail:empty::before {
-  content: "Costs and progress appear here once you have a quote.";
-  display: block;
-  padding: 1rem;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  color: var(--ink-faint);
-  font-size: .84rem;
-}
 .col .card { margin-bottom: .85rem; }
 .col .card:last-child { margin-bottom: 0; }
 .col .execute { margin-bottom: .85rem; }

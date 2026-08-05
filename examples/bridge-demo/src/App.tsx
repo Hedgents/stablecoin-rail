@@ -8,9 +8,20 @@ import {
 import { createRemoteFundingProvider } from "@hedgents/stablecoin-rail/remote";
 import { decodeBase58 } from "@hedgents/stablecoin-rail-solana";
 import { useRailFlow } from "@hedgents/stablecoin-rail-react";
-import { connectEvm, connectTron, sendTokenTransfer, submitStep, waitForReceipt } from "./wallets.js";
+import { connectEvm, connectTron, submitStep, waitForReceipt } from "./wallets.js";
 
 const STORAGE_KEY = "rail-bridge-demo/flow";
+
+// Only restore a session when money may still be moving. Quotes, errors, and
+// finished receipts are useful in the current tab, but they should never turn
+// the next visit into a wall of stale amounts and transaction details.
+const RESUMABLE_ON_RETURN = new Set<PersistedRailFlow["snapshot"]["phase"]>([
+  "funding-pending",
+  "destination-ready",
+  "preparing-action",
+  "awaiting-destination-signature",
+  "action-pending",
+]);
 
 /** Flow phases in language someone bridging for the first time can follow. */
 const PHASE_TEXT: Record<string, string> = {
@@ -105,8 +116,13 @@ function isSolanaAddress(value: string): boolean {
 function readPersisted(): PersistedRailFlow | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as PersistedRailFlow) : null;
+    if (!raw) return null;
+    const persisted = JSON.parse(raw) as PersistedRailFlow;
+    if (RESUMABLE_ON_RETURN.has(persisted.snapshot?.phase)) return persisted;
+    window.localStorage.removeItem(STORAGE_KEY);
+    return null;
   } catch {
+    window.localStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }
@@ -173,12 +189,13 @@ function Bridge({
   const [routeId, setRouteId] = useState<string>(
     () => routes.find((route) => route.status === "live")?.id ?? routes[0]?.id ?? "",
   );
-  const [amount, setAmount] = useState("10");
+  const [amount, setAmount] = useState("");
   const [destination, setDestination] = useState("");
   const [account, setAccount] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [donation, setDonation] = useState<{ hash: string } | null>(null);
+  const [tip, setTip] = useState<{ hash: string } | null>(null);
+  const [tipAmount, setTipAmount] = useState<string>(String(support?.suggestedUsd ?? 10));
   const [liquidity, setLiquidity] = useState<Liquidity | null>(null);
   const persisted = useRef<PersistedRailFlow | null>(readPersisted());
 
@@ -228,7 +245,7 @@ function Bridge({
   const destinationValid = isSolanaAddress(destination);
   const snapshot = flow.snapshot;
   const selected = flow.selectedQuote;
-  const liveCount = routes.filter((candidate) => candidate.status === "live").length;
+  const showDetails = snapshot.phase !== "idle" || selected !== null || liquidity !== null;
 
   async function run(label: string, action: () => Promise<unknown>) {
     setBusy(label);
@@ -320,14 +337,14 @@ function Bridge({
     });
   }
 
-  const outputAmount = selected ? bare(selected.funding.minimumOutput) : "0.00";
+  const outputAmount = selected ? bare(selected.funding.minimumOutput) : "";
   const rate =
     selected && Number(bare(selected.funding.input)) > 0
       ? (Number(outputAmount) / Number(bare(selected.funding.input))).toFixed(6)
       : null;
 
   return (
-    <div className="shell">
+    <div className={`shell ${showDetails ? "" : "shell-clean"}`}>
       {/* Left: what this is, and the standing warning. */}
       <div className="col col-intro">
       <header className="masthead">
@@ -336,17 +353,13 @@ function Bridge({
           Send USDC or USDT from another chain and receive it in your Solana wallet. You keep
           control of your funds the whole way.
         </p>
-        <span className="readout">
-          {liveCount} of {routes.length} chains available
-        </span>
       </header>
 
       <p className="notice">
-        <b>Unaudited demonstration.</b> No route here has completed a mainnet transfer and the SDK
-        has not had an independent security review.{" "}
+        <b>Alpha software.</b> Independently unaudited.{" "}
         {signingEnabled
-          ? "Signing is armed: transactions are real and irreversible."
-          : "Signing is disabled on this deployment, so quotes are live but nothing can be sent."}
+          ? "Transactions are real and irreversible."
+          : "Quotes are live; transfers are disabled."}
       </p>
 
       </div>
@@ -396,7 +409,7 @@ function Bridge({
               className="amount-in"
               value={amount}
               inputMode="decimal"
-              placeholder="0.00"
+              placeholder="Amount"
               aria-label="Amount to send"
               onChange={(event) => setAmount(event.target.value)}
             />
@@ -416,13 +429,9 @@ function Bridge({
         </div>
 
         <div className="leg">
-          <span className="leg-label">You&rsquo;ll receive at least</span>
-          <div className="amount-row">
-            <span className={selected ? "amount-out" : "amount-out idle"}>{outputAmount}</span>
-            <span className="ticker">{route?.settlement.symbol ?? ""} on Solana</span>
-          </div>
-
+          <label className="leg-label" htmlFor="destination">Receive on Solana</label>
           <input
+            id="destination"
             className="addr"
             value={destination}
             spellCheck={false}
@@ -433,11 +442,21 @@ function Bridge({
           />
           <small className={`field-note ${destination.length === 0 ? "" : destinationValid ? "ok" : "bad"}`}>
             {destination.length === 0
-              ? "No need to connect a Solana wallet. Just paste the address that should receive the money."
+              ? "Paste the receiving wallet. No Solana connection required."
               : destinationValid
                 ? "That looks like a valid Solana address."
                 : "That is not a valid Solana address. Money sent to a wrong address cannot be recovered."}
           </small>
+
+          {selected ? (
+            <div className="receive-preview">
+              <span className="leg-label">You&rsquo;ll receive at least</span>
+              <div className="amount-row">
+                <span className="amount-out">{outputAmount}</span>
+                <span className="ticker">{route?.settlement.symbol ?? ""} on Solana</span>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {selected && hasSpread(selected.funding) ? (
@@ -518,7 +537,8 @@ function Bridge({
 
       </div>
 
-      {/* Right: costs and progress, so nothing needs scrolling to. */}
+      {/* Right: appears only after the visitor asks for a quote or starts a transfer. */}
+      {showDetails ? (
       <div className="col col-detail">
       {liquidity ? (
         <section className={`card pool pool-${liquidity.band}`}>
@@ -580,24 +600,21 @@ function Bridge({
       ) : null}
 
       {/* ---------------------------------------------------- telemetry */}
+      {snapshot.phase !== "idle" ? (
       <section className="card">
         <div className="card-head">
           <span>Progress</span>
-          {snapshot.phase !== "idle" ? (
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                flow.reset();
-                setDonation(null);
-                window.localStorage.removeItem(STORAGE_KEY);
-              }}
-            >
-              Reset
-            </button>
-          ) : (
-            <small>not started</small>
-          )}
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              flow.reset();
+              setTip(null);
+              window.localStorage.removeItem(STORAGE_KEY);
+            }}
+          >
+            Reset
+          </button>
         </div>
 
         <div className="telemetry">
@@ -628,42 +645,104 @@ function Bridge({
                 </p>
               ) : null}
 
-              {support && route?.namespace === "evm" && account ? (
-                donation ? (
+              {support && account && route ? (
+                tip ? (
                   <p className="trace">
-                    Thank you. Donation tx <b>{donation.hash}</b>
+                    Thank you. Tip sent — source tx <b>{tip.hash}</b>
                   </p>
                 ) : (
                   <div className="support">
                     <p>
-                      This bridge is free and the SDK behind it is open source. Your support keeps it
-                      that way.
+                      This bridge charges no fee and the SDK behind it is open source. If it helped,
+                      consider tipping the project to keep it that way.
                     </p>
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={busy !== null}
-                      onClick={() =>
-                        run("donating", async () => {
-                          const units = toBaseUnits(String(support.suggestedUsd), route.token.decimals);
-                          if (!units) throw new Error("Invalid donation amount.");
-                          const hash = await sendTokenTransfer({
-                            token: route.token.address,
-                            to: support.address,
-                            amountBaseUnits: units,
-                            numericChainId: route.numericChainId ?? 1,
-                            account,
-                          });
-                          setDonation({ hash });
-                        })
-                      }
-                    >
-                      Donate {support.suggestedUsd} {route.token.symbol}
-                    </button>
+                    <div className="support-row">
+                      <div className="amount-row">
+                        <input
+                          className="amount-in"
+                          value={tipAmount}
+                          inputMode="numeric"
+                          pattern="\d*"
+                          placeholder={String(support.suggestedUsd)}
+                          aria-label="Tip amount"
+                          onChange={(event) =>
+                            // Integer only: strip anything that is not a digit.
+                            setTipAmount(event.target.value.replace(/[^\d]/g, ""))
+                          }
+                        />
+                        <span className="ticker">{route.token.symbol}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          run("tipping", async () => {
+                            const whole = tipAmount.trim() === "" ? support.suggestedUsd : Number(tipAmount);
+                            if (!Number.isInteger(whole) || whole <= 0) {
+                              throw new Error("Enter a whole number greater than zero.");
+                            }
+                            const units = toBaseUnits(String(whole), route.token.decimals);
+                            if (!units) throw new Error("Enter a whole number greater than zero.");
+                            /*
+                             * The tip is a second rail transfer: same source chain and asset the
+                             * user just used, but the destination is the project's Solana address.
+                             * A fresh flow keeps it isolated from the main transfer's resume state,
+                             * so a mid-tip reload can never strand the completed transfer.
+                             */
+                            const tipIntent: FundingIntent = {
+                              id: `tip-${Date.now()}`,
+                              source: {
+                                account: { chainId: route.chainId, address: account },
+                                asset: {
+                                  chainId: route.chainId,
+                                  assetId: route.assetId,
+                                  symbol: route.token.symbol,
+                                  decimals: route.token.decimals,
+                                },
+                              },
+                              destination: {
+                                account: { chainId: "solana:mainnet", address: support.address },
+                                settlementAsset: {
+                                  chainId: "solana:mainnet",
+                                  assetId: route.settlementAssetId,
+                                  symbol: route.settlement.symbol,
+                                  decimals: route.settlement.decimals,
+                                },
+                              },
+                              inputAmountBaseUnits: units.toString(),
+                              slippageBps: 50,
+                            };
+                            const tipFlow = client.createFlow();
+                            await tipFlow.quote(tipIntent);
+                            const prepared = await tipFlow.prepareFunding();
+                            let sourceHash: string | null = null;
+                            for (const step of prepared.fundingSteps as WalletStep[]) {
+                              const hash = await submitStep(step, account);
+                              if (step.kind === "approval" && step.request.namespace === "evm") {
+                                await waitForReceipt(hash);
+                              }
+                              if (step.kind === "funding") sourceHash = hash;
+                            }
+                            if (!sourceHash) throw new Error("No tip transaction was produced.");
+                            tipFlow.markFundingSubmitted({
+                              chainId: prepared.fundingSteps[0]!.chainId,
+                              txId: sourceHash,
+                              submittedAt: new Date().toISOString(),
+                            });
+                            setTip({ hash: sourceHash });
+                          })
+                        }
+                      >
+                        Tip
+                      </button>
+                    </div>
                     <small className="field-note">
-                      Entirely optional and separate from your transfer, which is already complete. A
-                      new transaction on {route.label} to <code>{support.address}</code>, costing gas.
-                      Nothing happens unless you sign it.
+                      Optional and separate from your transfer, which is already complete. It repeats
+                      the same {route.label} → Solana route to{" "}
+                      <code>{support.address.slice(0, 6)}…{support.address.slice(-4)}</code>, so the
+                      project receives slightly less than the tipped amount after route fees. You sign
+                      one more transaction; nothing happens by inaction.
                     </small>
                   </div>
                 )
@@ -677,7 +756,9 @@ function Bridge({
           </p>
         </div>
       </section>
+      ) : null}
       </div>
+      ) : null}
     </div>
   );
 }
