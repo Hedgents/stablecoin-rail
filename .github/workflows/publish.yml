@@ -12,7 +12,7 @@ on:
       deprecate:
         description: "Mark newly published versions as alpha-deprecated"
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: read
