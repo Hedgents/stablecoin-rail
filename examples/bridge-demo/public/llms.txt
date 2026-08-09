@@ -1,0 +1,42 @@
+# Hedgents Stablecoin Rail
+
+> Hedgents Stablecoin Rail is an Apache-2.0, non-custodial TypeScript SDK for funding Solana applications with stablecoins from other chains through existing transport providers.
+
+Canonical website: https://rail.hedgents.com/
+Source repository: https://github.com/Hedgents/stablecoin-rail
+Core npm package: https://www.npmjs.com/package/@hedgents/stablecoin-rail
+Status and evidence: https://github.com/Hedgents/stablecoin-rail/blob/main/docs/STATUS.md
+License: Apache-2.0
+Last updated: 2026-08-09
+
+## What it provides
+
+- Provider-neutral funding quotes ranked by guaranteed output.
+- Unsigned wallet requests; the SDK never holds keys or signs transactions.
+- A resumable state machine for interrupted and in-flight transfers.
+- Remote provider support so applications can keep API credentials server-side.
+- Solana settlement verification and a shared provider conformance suite.
+- Optional continuation into a Solana application action after confirmed funding.
+
+## What it is not
+
+Stablecoin Rail is not a bridge, validator network, custodian, token issuer, or required hosted service. Circle CCTP, LayerZero, Mayan, and other provider plugins remain responsible for transport. The rail standardizes the application integration and verification layer.
+
+## Current evidence
+
+- Seven public npm packages are published with provenance attestations.
+- The repository documents 226 deterministic tests.
+- Ethereum USDC to Solana USDC through Circle CCTP V2 has one public mainnet proof.
+- The core package has zero runtime dependencies.
+
+## Current limitations
+
+The project is an alpha and has not completed an independent security review. The Ethereum CCTP route is the only route with a published end-to-end mainnet proof. Other routes are implemented but unproven or gated. Consult the status document before testing with real funds.
+
+## Primary documentation
+
+- Project overview and quick start: https://github.com/Hedgents/stablecoin-rail#readme
+- Architecture: https://github.com/Hedgents/stablecoin-rail/blob/main/docs/ARCHITECTURE.md
+- Plugin authoring: https://github.com/Hedgents/stablecoin-rail/blob/main/docs/PLUGINS.md
+- Current status and mainnet proof: https://github.com/Hedgents/stablecoin-rail/blob/main/docs/STATUS.md
+- Product scope: https://github.com/Hedgents/stablecoin-rail/blob/main/docs/PRODUCT_VISION_AND_MVP.md

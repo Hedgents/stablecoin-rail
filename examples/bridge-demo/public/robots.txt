@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rail.hedgents.com/sitemap.xml

@@ -3,10 +3,212 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Stablecoin Rail — bridge demo</title>
+    <title>Stablecoin Rail SDK for Solana Apps | Hedgents</title>
+    <meta
+      name="description"
+      content="Open-source TypeScript SDK for funding Solana apps with USDC or USDT from other chains. Compare providers, recover transfers, and verify settlement."
+    />
+    <meta name="author" content="Hedgents" />
+    <meta name="application-name" content="Hedgents Stablecoin Rail" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="theme-color" content="#f5f4f0" />
+
+    <link rel="canonical" href="https://rail.hedgents.com/" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="AI-readable project summary" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Hedgents" />
+    <meta property="og:title" content="Stablecoin Rail SDK for Solana Apps" />
+    <meta
+      property="og:description"
+      content="Open-source, non-custodial tooling for funding Solana applications with stablecoins from other chains."
+    />
+    <meta property="og:url" content="https://rail.hedgents.com/" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Stablecoin Rail SDK for Solana Apps" />
+    <meta
+      name="twitter:description"
+      content="Open-source, non-custodial tooling for funding Solana applications with stablecoins from other chains."
+    />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://hedgents.com/#organization",
+            "name": "Hedgents",
+            "url": "https://hedgents.com/",
+            "sameAs": ["https://github.com/Hedgents"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://rail.hedgents.com/#website",
+            "url": "https://rail.hedgents.com/",
+            "name": "Hedgents Stablecoin Rail",
+            "description": "Open-source stablecoin funding SDK for Solana applications.",
+            "publisher": { "@id": "https://hedgents.com/#organization" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://rail.hedgents.com/#software",
+            "name": "Hedgents Stablecoin Rail",
+            "url": "https://rail.hedgents.com/",
+            "codeRepository": "https://github.com/Hedgents/stablecoin-rail",
+            "downloadUrl": "https://www.npmjs.com/package/@hedgents/stablecoin-rail",
+            "softwareVersion": "0.2.2",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Any",
+            "isAccessibleForFree": true,
+            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "description": "A non-custodial TypeScript SDK that lets Solana applications accept stablecoins from other chains through existing transport providers, with route comparison, resumable state, unsigned wallet requests, and settlement verification.",
+            "author": { "@id": "https://hedgents.com/#organization" },
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://rail.hedgents.com/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is Stablecoin Rail a bridge?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Stablecoin Rail is an application integration layer over established transports such as Circle CCTP, LayerZero, and Mayan. It does not operate a validator network, issue a token, or take custody of funds."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What does Stablecoin Rail provide to Solana developers?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "It provides provider-neutral quotes, route validation, unsigned wallet requests, resumable transfer state, status tracking, and Solana settlement verification through one TypeScript interface."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does Stablecoin Rail hold funds or sign transactions?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The SDK is non-custodial and wallet-agnostic. Providers return unsigned requests, while the application keeps control of wallet connection, signing, and submission."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Stablecoin Rail ready for production?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The project is an alpha and has not completed an independent security review. One Ethereum USDC to Solana USDC route has a published mainnet proof; other routes remain unproven or gated."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+
+    <section class="seo-content" aria-labelledby="about-rail">
+      <div class="seo-intro">
+        <p class="seo-kicker">Open-source Solana developer tooling</p>
+        <h2 id="about-rail">What is Hedgents Stablecoin Rail?</h2>
+        <p>
+          Hedgents Stablecoin Rail is a non-custodial TypeScript SDK that lets Solana applications
+          accept stablecoins from other chains through existing transport providers. It combines
+          provider-neutral quotes, resumable transfer state, unsigned wallet requests, and Solana
+          settlement verification behind one interface.
+        </p>
+        <p>
+          It is free to use under Apache-2.0 and does not require a Hedgents account, token, bridge,
+          validator network, or custodial wallet.
+        </p>
+        <ul class="proof-list" aria-label="Project proof points">
+          <li><strong>7</strong> published npm packages</li>
+          <li><strong>226</strong> deterministic tests</li>
+          <li><strong>1</strong> public mainnet transfer proof</li>
+          <li><strong>0</strong> runtime dependencies in the core</li>
+        </ul>
+      </div>
+
+      <div class="seo-grid">
+        <article>
+          <h2>How does stablecoin funding into Solana work?</h2>
+          <ol>
+            <li>The application describes the source asset, Solana recipient, and minimum outcome.</li>
+            <li>Provider plugins return comparable quotes and unsigned wallet requests.</li>
+            <li>The rail tracks the transfer, survives reloads, and verifies settlement on Solana.</li>
+          </ol>
+        </article>
+        <article>
+          <h2>Why not integrate a bridge directly?</h2>
+          <p>
+            A bridge moves tokens. A Solana application still has to compare outcomes, protect API
+            keys, validate assets, handle wallet requests, recover interrupted transfers, and prove
+            what arrived. Stablecoin Rail turns those repeated integration problems into a public
+            plugin contract while leaving transport to established providers.
+          </p>
+        </article>
+      </div>
+
+      <nav class="resource-links" aria-label="Developer resources">
+        <a href="https://github.com/Hedgents/stablecoin-rail">Source code on GitHub</a>
+        <a href="https://www.npmjs.com/package/@hedgents/stablecoin-rail">Install from npm</a>
+        <a href="https://github.com/Hedgents/stablecoin-rail/blob/main/docs/STATUS.md">Status and mainnet evidence</a>
+        <a href="https://github.com/Hedgents/stablecoin-rail#quick-start">Integration guide</a>
+      </nav>
+
+      <section class="faq" aria-labelledby="faq-title">
+        <p class="seo-kicker">Straight answers</p>
+        <h2 id="faq-title">Stablecoin Rail FAQ</h2>
+        <div class="faq-grid">
+          <article>
+            <h3>Is Stablecoin Rail a bridge?</h3>
+            <p>
+              No. It is an application layer over established transports such as Circle CCTP,
+              LayerZero, and Mayan. It does not run a validator network, issue a token, or custody funds.
+            </p>
+          </article>
+          <article>
+            <h3>What does it provide to Solana developers?</h3>
+            <p>
+              Comparable quotes, route validation, unsigned wallet requests, resumable state,
+              status tracking, and settlement verification through one TypeScript interface.
+            </p>
+          </article>
+          <article>
+            <h3>Which routes are proven today?</h3>
+            <p>
+              Ethereum USDC to Solana USDC through Circle CCTP V2 has a published mainnet proof.
+              Other routes in the alpha remain unproven or gated and are documented as such.
+            </p>
+          </article>
+          <article>
+            <h3>Is it ready for production?</h3>
+            <p>
+              No. The project is an alpha and has not had an independent security review. Read the
+              public status and evidence before testing with real funds.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="project-footer">
+        <span>Built in public by Hedgents.</span>
+        <time datetime="2026-08-09">Updated 9 August 2026</time>
+        <a href="/llms.txt">AI-readable project summary</a>
+      </footer>
+    </section>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
