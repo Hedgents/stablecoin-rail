@@ -18,6 +18,7 @@
     "@hedgents/stablecoin-rail-mayan": "0.1.0",
     "@hedgents/stablecoin-rail-react": "0.1.0",
     "@mayanfinance/swap-sdk": "^15.1.0",
+    "@vercel/analytics": "^2.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
