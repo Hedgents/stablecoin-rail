@@ -29,9 +29,10 @@ const PORT = Number(process.env.PORT ?? 8787);
 const RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const MAYAN_API_KEY = process.env.MAYAN_API_KEY;
 const LAYERZERO_API_KEY = process.env.LAYERZERO_API_KEY;
-// Optional. Unset means the support prompt never renders at all.
-const DONATION_ADDRESS = process.env.DONATION_ADDRESS ?? null;
-const DONATION_USD = Number(process.env.DONATION_USD ?? 5);
+// Default tips the project maintainer on Solana. Override per deployment with
+// DONATION_ADDRESS; set it to an empty string to hide the tip entirely.
+const DONATION_ADDRESS = process.env.DONATION_ADDRESS ?? "qw4hzfV7UUXTrNh3hiS9Q8KSPMXWUusNoyFKLvtcMMX";
+const DONATION_USD = Number(process.env.DONATION_USD ?? 10);
 const USDT0_ALLOWLIST = (process.env.USDT0_TRON_ALLOWLIST ?? "")
   .split(",")
   .map((entry) => entry.trim().toLowerCase())
@@ -226,8 +227,8 @@ if (LAYERZERO_API_KEY) {
   });
 }
 
-// Signing is opt-in per deployment. No route has completed a mainnet transfer,
-// so a public instance defaults to quote-only until an operator turns it on.
+// Signing is opt-in per deployment. One CCTP route has a small-value mainnet
+// proof, but the SDK remains unaudited, so public instances default to quote-only.
 const SIGNING_ENABLED = process.env.RAIL_DEMO_SIGNING === "enabled";
 
 const handle = createRailHandler({
@@ -238,7 +239,7 @@ const handle = createRailHandler({
     if (request.kind !== "funding") throw new Error("This demo only exposes funding routes.");
     if (!SIGNING_ENABLED && request.method === "prepare") {
       throw new Error(
-        "Signing is disabled on this deployment. No route has completed a mainnet transfer yet.",
+        "Signing is disabled on this unaudited deployment. Quotes are live, but transfers are not armed.",
       );
     }
   },
@@ -266,3 +267,4 @@ export { handle, routes, SIGNING_ENABLED };
 export const support = DONATION_ADDRESS
   ? { address: DONATION_ADDRESS, suggestedUsd: DONATION_USD }
   : null;
+// An explicit empty string disables the tip even though the default is set.

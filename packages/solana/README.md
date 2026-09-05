@@ -7,7 +7,7 @@ This package exists so that every Solana-settling funding provider can answer on
 ## Install
 
 ```bash
-npm install @hedgents/stablecoin-rail-solana
+npm install @hedgents/stablecoin-rail-solana@alpha
 ```
 
 ## Settlement verification

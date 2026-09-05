@@ -46,14 +46,16 @@ The chain is asserted per wallet step, from the step itself, rather than trustin
 
 ## Supporting the project
 
-With `DONATION_ADDRESS` set, the completed screen offers an optional donation.
+With `DONATION_ADDRESS` set (it defaults to the maintainer's Solana address), the completed screen offers an optional **tip** — a whole-number amount the user enters and a single *Tip* button.
 
-It sits **after** the transfer has landed, never during it. It is a separate transaction the user signs deliberately, showing the exact amount and recipient, and nothing is taken by inaction. It is not folded into the bridge, not pre-authorised, and not part of any quote, so it never affects route ranking or the guaranteed output.
+The tip is a second rail transfer, not a same-chain token send: it repeats the same source-chain route the user just used, to the project's Solana address instead of theirs. Because it goes through the rail it works for **every route, including TRON** — no separate TRC-20 path is needed.
 
-This is why it is a donation rather than a fee: the service is complete and free before it is ever mentioned, and declining costs the user nothing. A prompt placed earlier, or defaulted into the payment the user is already authorising, would be a charge dressed as a request. The EU Consumer Rights Directive treats that as inferred rather than express consent and entitles the payer to reimbursement, and it is catalogued as the "sneak into basket" deceptive pattern.
+It sits **after** the transfer has landed, never during it. It is a separate transaction the user signs deliberately, showing the exact amount and recipient, and nothing is taken by inaction. It is not folded into the bridge, not pre-authorised, and not part of any quote, so it never affects route ranking or the guaranteed output of the transfer that preceded it.
 
-EVM routes only. A TRON donation would need TRC-20 transaction building that the demo does not carry.
+This is why it is a tip rather than a fee: the service is complete and free before it is ever mentioned, and declining costs the user nothing. A prompt placed earlier, or defaulted into the payment the user is already authorising, would be a charge dressed as a request. The EU Consumer Rights Directive treats that as inferred rather than express consent and entitles the payer to reimbursement, and it is catalogued as the "sneak into basket" deceptive pattern.
+
+One honesty note: because the tip runs the same route as a real transfer, the project receives slightly less than the tipped amount after route fees, and on routes not yet proven on mainnet the tip carries the same alpha risk. The tip microcopy says so.
 
 ## Status
 
-**No route here has completed a mainnet transfer.** Quoting has been exercised against live Circle and Solana endpoints; signing has not. Treat this as a demonstration, not a production bridge.
+The SDK's Ethereum USDC → Solana USDC route has completed one small-value mainnet transfer. The other routes remain unproven, the current exact-transaction attribution path still needs a live replay, and there has been no independent security review. Signing is disabled by default; treat this as a demonstration, not a production bridge.

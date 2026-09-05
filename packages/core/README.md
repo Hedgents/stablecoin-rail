@@ -3,7 +3,7 @@
 Framework-neutral plugin contracts, quote routing, and an explicit state machine for funding Solana application actions from stablecoins on other chains.
 
 ```bash
-npm install @hedgents/stablecoin-rail
+npm install @hedgents/stablecoin-rail@alpha
 ```
 
 ```ts

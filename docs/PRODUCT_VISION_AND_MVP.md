@@ -1,9 +1,9 @@
-# Hedgents Stablecoin Rail
+# Open Stablecoin Ingress for Solana Applications
 
 ## Product vision, technical architecture, and MVP scope
 
 **Status:** Alpha implementation  
-**Last updated:** 2026-08-03  
+**Last updated:** 2026-08-04
 **First application:** Hedgents metal terminal on Solana
 
 ---
@@ -295,8 +295,10 @@ Solana product
 
 | Stablecoin | Source | Destination | Provider | Status | Notes |
 |---|---|---|---|---|---|
-| USDC | Ethereum | Solana USDC | Circle CCTP V2 | Implemented, gated | Quote, prepare, and status are implemented and tested against recorded fixtures. No mainnet transfer has been completed, so the route must stay disabled in production. |
+| USDC | Ethereum | Solana USDC | Circle CCTP V2 | **Mainnet proven, alpha** | One 5 USDC transfer completed. The current verifier replays Circle's exact Solana `forwardTxHash` and measures 4.875317 USDC delivered. Still gated from broad production use pending independent review. |
 | USDC | Base | Solana USDC | Circle CCTP V2 | Implemented, gated | Same code path and TokenMessenger address as Ethereum; only the domain, chain ID, and USDC address differ. Carries the same mainnet-proof gate. |
+| USDC | Arbitrum | Solana USDC | Circle CCTP V2 | Implemented, gated | Same provider contract; unexercised on mainnet. |
+| USDC | Monad | Solana USDC | Circle CCTP V2 | Implemented, gated | Configured as CCTP domain 15; unexercised on mainnet. |
 | USDC | HyperEVM | Solana USDC | Circle CCTP | Planned | HyperCore funding is a separate user step before HyperEVM CCTP when needed. |
 | Binance-Peg USDC | BNB Chain | Solana USDC | Mayan | Implemented, gated | Quote, prepare, and status implemented and tested against a fake SDK and recorded fixtures. Not native Circle CCTP: the token is Binance-issued and Mayan swaps it, so every quote carries an explicit disclosure. No mainnet transfer completed. |
 | USDT | TRON | Solana USDT | USDT0 / LayerZero | Implemented, gated | Verified supported on LayerZero's live registry (chainKey tron, USDT isSupported). Needs only an API key; a contract allowlist is optional hardening. Awaits credentials and a mainnet proof. |
@@ -335,7 +337,7 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 - Resumable flow: versioned serialization, fail-closed hydration, and mandatory re-preparation of wallet steps.
 - Settlement verification in the core, rejecting a delivery below the guaranteed minimum.
 - `@hedgents/stablecoin-rail-solana`: base58, associated-token-account derivation with on-curve rejection, and a balance-delta settlement verifier.
-- `@hedgents/stablecoin-rail-cctp`: source-configurable Circle CCTP V2 provider for Ethereum, Base, and Arbitrum.
+- `@hedgents/stablecoin-rail-cctp`: source-configurable Circle CCTP V2 provider for Ethereum, Base, Arbitrum, and Monad.
 - `@hedgents/stablecoin-rail-mayan`: disclosed Binance-Peg USDC adapter route from BNB Chain, with the Mayan SDK injected rather than bundled.
 - A remote transport (`@hedgents/stablecoin-rail/remote`) keeping provider credentials server-side, verified contract-preserving by the conformance suite.
 - A runnable bridge demo (`examples/bridge-demo`) exercising funding-only intents, cross-provider ranking, resume, and the remote transport.
@@ -343,17 +345,17 @@ TRON is therefore one USDT liquidity source among several. Its metal inventory i
 
 ### Not completed
 
-- No package has been published to npm.
+- All seven public packages are published to npm under the `alpha` tag with provenance attestations.
 - No real wallet currently executes the returned TRON request in the terminal.
 - No LayerZero production API key is configured.
 - No USDT0 TRON contract allowlist is configured. This is optional hardening rather than a precondition; the adapter enforces structural checks and surfaces the contract it will call.
 - No TRON → Solana small-value mainnet transfer has been completed by Hedgents.
-- Settlement verification has never run against a real delivery transaction; it is tested only against recorded RPC fixtures.
-- No CCTP route has completed a small-value mainnet transfer.
+- Settlement verification has run against the exact Solana transaction for one real Ethereum CCTP delivery; every other route remains fixture-only.
+- Base, Arbitrum, and Monad CCTP routes have not completed small-value mainnet transfers.
 - The Mayan BNB route has not completed a small-value mainnet transfer.
-- Circle exposes no destination-transaction identifier for a forwarded transfer, so the CCTP route proves delivery by destination balance and cannot yet report an exact received amount.
+- Current Circle responses expose `forwardTxHash`; the provider verifies that exact Solana transaction and reports its measured credit. A bounded scan exists only for compatibility with responses that omit the field.
 - The Allbridge fallback is not implemented.
-- Production CCTP and Mayan server adapters remain incomplete.
+- The CCTP and Mayan provider packages are implemented as alpha software; production hardening and independent review remain incomplete.
 - Independent security review has not happened.
 
 The project must therefore remain labeled **alpha** and **non-production**.
@@ -612,21 +614,21 @@ The first beta does not need every planned route, but it should not launch as a 
 - React hook.
 - Example CCTP, Mayan, and Jupiter boundaries.
 
-### SR-1 — Provider adapter layer: in progress
+### SR-1 — Provider adapter layer: alpha implemented
 
 Current state:
 
-- Circle CCTP server-plugin scaffold for Ethereum USDC.
-- Mayan server-plugin scaffold for BNB funding.
+- Circle CCTP provider for Ethereum, Base, Arbitrum, and Monad USDC.
+- Mayan provider for disclosed BNB funding.
 - Dedicated LayerZero TRON USDT adapter with canonical asset pins.
 - Provider-independent quote and status interfaces.
 
 No route is production-enabled yet.
 
-### SR-2 — First production USDC routes
+### SR-2 — First production USDC routes: Ethereum proof complete
 
-- Complete Ethereum → Solana CCTP quote, prepare, attestation, mint, and status handling.
-- Run a small-value mainnet proof.
+- Ethereum → Solana quote, prepare, attestation, forwarding, and exact settlement status are complete.
+- One small-value mainnet proof is recorded and reproducible through `npm run verify:cctp-proof`.
 - Reuse the validated boundary for Base → Solana.
 - Verify exact canonical Solana USDC balance deltas.
 

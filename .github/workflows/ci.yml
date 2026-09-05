@@ -14,7 +14,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            examples/bridge-demo/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run pack:check
+      # The bridge demo deliberately consumes the public packages instead of
+      # workspace links. Test it separately so stale releases and broken npm
+      # artifacts cannot hide behind the monorepo build.
+      - run: npm ci
+        working-directory: examples/bridge-demo
+      - run: npm run typecheck
+        working-directory: examples/bridge-demo
+      - run: npm run build
+        working-directory: examples/bridge-demo

@@ -1,36 +1,37 @@
-# Hedgents Stablecoin Rail
+# Open stablecoin ingress for Solana applications
 
-A headless, plugin-based SDK for bringing stablecoin capital from another chain into a Solana application and completing an application-specific destination action.
+A headless, plugin-based SDK that lets Solana applications accept major stablecoins from other chains, verify what arrived, and optionally continue into an application-specific destination action.
 
-This is not a bridge and does not operate a solver network. It orchestrates existing funding providers such as CCTP or intent networks behind one consistent user experience.
+This is not a bridge and does not operate a solver network. It turns CCTP, OFT networks, and intent providers into interchangeable funding plugins behind one fail-closed contract.
 
 ```text
 source stablecoin → funding-provider plugin → Solana settlement asset → destination-action plugin
 ```
 
-Hedgents' metal terminal is the first reference application: a user can fund with a supported stablecoin on another chain, receive the same canonical stablecoin on Solana, then sign a separate Jupiter metal purchase. No stablecoin-to-stablecoin swap is implied.
+USDC over CCTP is the first proven route, not the scope of the product. The same core already models canonical USDT over USDT0/LayerZero, USDG over LayerZero OFT, and explicitly disclosed adapter routes where the source asset crosses an issuer boundary.
 
 ## Packages
 
 - `@hedgents/stablecoin-rail` — framework-neutral router, plugin contracts, quote ranking, and explicit flow state machine.
 - `@hedgents/stablecoin-rail-solana` — Solana address helpers and a settlement verifier that confirms the exact amount delivered.
-- `@hedgents/stablecoin-rail-cctp` — Circle CCTP V2 provider moving native USDC from Ethereum, Base, or Arbitrum into a Solana wallet.
+- `@hedgents/stablecoin-rail-cctp` — Circle CCTP V2 provider moving native USDC from Ethereum, Base, Arbitrum, or Monad into a Solana wallet.
 - `@hedgents/stablecoin-rail-mayan` — disclosed adapter route for Binance-Peg USDC on BNB Chain into native Solana USDC. Not CCTP.
-- `@hedgents/stablecoin-rail-layerzero` — server-side USDT0/LayerZero adapter for canonical TRON USDT → canonical Solana USDT.
+- `@hedgents/stablecoin-rail-layerzero` — server-side adapters for canonical TRON USDT and Robinhood Chain USDG into their canonical Solana assets.
+- `@hedgents/stablecoin-rail-allbridge` — pool-depth and liquidity-risk assessment for pool-based routes.
 - `@hedgents/stablecoin-rail-react` — a small `useRailFlow` hook over the core state machine.
 
-## First dedicated provider adapter
+## Multi-stablecoin by design
 
 ```text
-TRON USDT (TR7N…Lj6t)
-  → USDT0 Legacy Mesh / LayerZero Value Transfer API
-  → Solana USDT (Es9v…wNYB)
-  → destination action
+source stablecoin
+  → exact asset identity and provider policy
+  → verified Solana settlement asset
+  → optional destination action
 ```
 
-The LayerZero adapter pins both token contracts and both chains, ranks the provider's executable quotes by minimum output, requests fresh unsigned TRON transactions, verifies the expected signer, and tracks delivery or refunds. It requires a server-side LayerZero API key and has not yet passed a small-value mainnet transfer; keep it disabled in production until that test is complete.
+Every adapter must pin chains and asset identities, quote a guaranteed minimum, return unsigned wallet requests, and prove settlement or refunds. Canonical like-for-like routes stay distinct from swap or issuer-boundary routes; the SDK never treats a shared ticker as proof that two tokens are the same asset.
 
-This is one adapter, not the scope of the rail. The product is designed to fund Solana actions with USDC, USDT, USDG, and future verified stablecoins from any supported source chain.
+The current LayerZero routes require a server-side API key and have not yet passed small-value mainnet transfers. They remain disabled in production until that validation is complete.
 
 ## Install
 
@@ -47,7 +48,9 @@ security review. See [docs/STATUS.md](docs/STATUS.md).
 `examples/bridge-demo` is a small website that moves a stablecoin from another chain into a Solana wallet. It is the shortest complete integration reference: funding-only intents, ranking across three providers, resume, and provider credentials kept server-side.
 
 ```bash
-npm install && npm run dev -w @hedgents/rail-example-bridge-demo
+cd examples/bridge-demo
+npm install
+npm run dev
 ```
 
 ## Design principles
@@ -63,7 +66,7 @@ npm install && npm run dev -w @hedgents/rail-example-bridge-demo
 ## Quick start
 
 ```bash
-npm install @hedgents/stablecoin-rail
+npm install @hedgents/stablecoin-rail@alpha
 ```
 
 ```ts
@@ -129,7 +132,8 @@ function FundingCheckout({ client, intent }) {
       <p>{snapshot.phase}</p>
       {snapshot.batch?.quotes.map((route) => (
         <button key={route.id} onClick={() => selectQuote(route.id)}>
-          {route.funding.providerName}: at least {route.action.minimumOutput.amountBaseUnits}
+          {route.funding.providerName}: at least{" "}
+          {route.action?.minimumOutput.amountBaseUnits ?? route.funding.minimumOutput.amountBaseUnits}
         </button>
       ))}
     </section>
@@ -141,4 +145,4 @@ function FundingCheckout({ client, intent }) {
 
 This is an alpha SDK. The public interfaces are usable and tested, but production provider adapters should not be enabled before targeted mainnet tests and an independent security review.
 
-See [the product vision and MVP](docs/PRODUCT_VISION_AND_MVP.md), [architecture](docs/ARCHITECTURE.md), [UX contract](docs/UX.md), [plugin authoring guide](docs/PLUGINS.md), and [publishing checklist](docs/PUBLISHING.md).
+See [the Solana Foundation grant brief](docs/SOLANA_FOUNDATION_GRANT.md), [product vision and MVP](docs/PRODUCT_VISION_AND_MVP.md), [architecture](docs/ARCHITECTURE.md), [UX contract](docs/UX.md), [plugin authoring guide](docs/PLUGINS.md), and [publishing checklist](docs/PUBLISHING.md).
